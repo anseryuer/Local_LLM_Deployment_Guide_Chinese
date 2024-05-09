@@ -9,6 +9,8 @@ Hello!
 
 我很有可能会犯点错，不过请谅解！还可以告诉我哪里错了怎么改，谢谢！
 
+[Buy me a coffee](https://buymeacoffee.com/ansertbyu)
+
 ## 目录
 
 - [电脑硬件、操作系统、GPU加速的基础知识](#电脑硬件操作系统gpu加速的基础知识)
