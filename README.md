@@ -9,37 +9,46 @@ Hello!
 
 我很有可能会犯点错，不过请谅解！还可以告诉我哪里错了怎么改，谢谢！
 
-[Buy me a coffee](https://buymeacoffee.com/ansertbyu)
-
 ## 目录
 
-- [电脑硬件、操作系统、GPU加速的基础知识](#电脑硬件操作系统gpu加速的基础知识)
-- [大语言模型 Large Language Models (LLM)](#大语言模型-large-language-models-llm)
-    - [Transformer架构与Attention机制](#transformer架构与attention机制)
-    - [Tokenizer](#tokenizer)
+- [本地部署大语言模型的中文教学](#本地部署大语言模型的中文教学)
+  - [目录](#目录)
+  - [电脑硬件、操作系统、GPU加速的基础知识](#电脑硬件操作系统gpu加速的基础知识)
+    - [CPU和RAM](#cpu和ram)
+    - [GPU与VRAM](#gpu与vram)
+      - [GPU性能](#gpu性能)
+      - [VRAM(显存)](#vram显存)
+      - [多显卡运算](#多显卡运算)
+      - [显存带宽](#显存带宽)
+      - [GPU优化](#gpu优化)
     - [内存与显存占用](#内存与显存占用)
     - [FP16与Quantization](#fp16与quantization)
+      - [半精度(FP16):](#半精度fp16)
+      - [量化(Quantization):](#量化quantization)
     - [Finetune](#finetune)
-    - [上下文](#上下文)
-- [选择你要用的模型](#选择你要用的模型)
+    - [上下文Context](#上下文context)
+  - [如何为LLM配置一台电脑](#如何为llm配置一台电脑)
+  - [选择你要用的模型](#选择你要用的模型)
     - [Hugging face demos](#hugging-face-demos)
     - [技术报告](#技术报告)
     - [Benchmark和ranking](#benchmark和ranking)
-        - [MMLU](#mmlu)
-        - [LMSYS Chatbot Arena](#lmsys-chatbot-arena)
+      - [MMLU](#mmlu)
+      - [LMSYS Chatbot Arena](#lmsys-chatbot-arena)
     - [常用模型推荐](#常用模型推荐)
-- [对话与提示](#对话与提示)
+  - [对话与提示](#对话与提示)
     - [系统提示](#系统提示)
+    - [系统提示的制作方法](#系统提示的制作方法)
     - [对话格式](#对话格式)
-- [部署方法](#部署方法)
+  - [部署方法](#部署方法)
     - [llama.cpp系列](#llamacpp系列)
-        - [lmstudio](#lmstudio)
-        - [Ollama](#ollama)
-        - [llamacpp-python](#llamacpp-python)
+      - [lmstudio](#lmstudio)
+      - [Ollama](#ollama)
+      - [llamacpp-python](#llamacpp-python)
+    - [ONNX, Intel OpenVino, AMD Vitas AI](#onnx-intel-openvino-amd-vitas-ai)
     - [Python 相关](#python-相关)
-        - [Conda与Docker](#conda与docker)
-        - [Hugging Face Transformers](#hugging-face-transformers)
-        - [Pytorch与Tensorflow](#pytorch与tensorflow)
+      - [Conda与Docker](#conda与docker)
+      - [Hugging Face Transformers](#hugging-face-transformers)
+      - [Pytorch与Tensorflow](#pytorch与tensorflow)
 
 ## 电脑硬件、操作系统、GPU加速的基础知识
 电脑硬件相关的知识真的很重要！
@@ -137,7 +146,7 @@ Nvidia有很多老服务器卡会有很大的内存但是很便宜。你可以�
 #### GPU优化
 制造商通过优化的软件库(如Nvidia的TensorRT)和硬件设计(如Tensor Core),进一步提升GPU在AI推理的性能。
 
-Nvidia的GPU优化是做的最好的。
+Nvidia的GPU优化是做的最好的。当你使用的是最新的的RTX 30/40系时（这也包含其他Ada Lovelace / Ampere架构的卡，例如RTX A5000）你可以使用一部分新的功能进一步提升你的速度，所以我的建议是买新不买旧。
 
 ### 内存与显存占用
 
@@ -147,9 +156,10 @@ Nvidia的GPU优化是做的最好的。
 - 参数精度:一般来说,参数使用32位浮点数(FP32)存储。每个FP32参数占用4个字节。
 - 参数个数:1B参数=1,000,000,000个参数。
 - 附加内存开销:除了存储参数本身,运行模型还需要额外的内存用于中间计算、缓存等。在推理中没有Optimizer这个东西所以这个不用太担心，比较小。
+- 如果你跑的是长context（下面会讲），这个可能会变多，模型也会变大。
 
-假设使用FP32精度,并考虑3倍的附加内存开销,1B参数模型在32位系统上的总内存占用计算如下:
-参数本身: 1,000,000,000 * 4 Byte = 4,000,000,000 Byte = 3.72 GB
+假设使用FP32精度,1B参数模型在32位系统上的总内存占用计算如下:
+参数本身: 1,000,000,000 * 4 Byte = 4,000,000,000 Byte = 4 GB
 附加内存: 差不多0.3GB
 总内存占用: 4 GB
 
@@ -158,6 +168,7 @@ Nvidia的GPU优化是做的最好的。
 (-_-)!
 
 所以有了各种各样的降低精度来减小内存的方法。
+
 
 ### FP16与Quantization
 
@@ -198,9 +209,11 @@ Nvidia的GPU优化是做的最好的。
 （笑死，我还写了小数假装自己很专业）
 
 ### Finetune
-哎~我先不写，回头再说。
+哎，我先不写，回头再说。
 
 ### 上下文Context
+
+## 如何为LLM配置一台电脑
 
 ## 选择你要用的模型
 ### Hugging face demos
@@ -209,9 +222,10 @@ Nvidia的GPU优化是做的最好的。
 #### MMLU
 #### LMSYS Chatbot Arena
 ### 常用模型推荐
-####
+
 ## 对话与提示
 ### 系统提示
+### 系统提示的制作方法
 ### 对话格式
 
 ## 部署方法
@@ -219,6 +233,9 @@ Nvidia的GPU优化是做的最好的。
 #### lmstudio
 #### Ollama
 #### llamacpp-python
+
+### ONNX, Intel OpenVino, AMD Vitas AI
+
 ### Python 相关
 #### Conda与Docker
 #### Hugging Face Transformers
