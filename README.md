@@ -249,7 +249,11 @@ K Quantization vs Perplexity
 
 ## 如何为LLM配置一台电脑
 
-来自Reddit，
+在回答这个问题前，你需要明确：
+
+- 我的预算是什么？
+- 我的需求是什么？
+
 
 ## 选择你要用的模型
 ### Hugging face demos
