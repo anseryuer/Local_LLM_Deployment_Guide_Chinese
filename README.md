@@ -9,6 +9,14 @@ Hello!
 
 我很有可能会犯点错，不过请谅解！还可以告诉我哪里错了怎么改，谢谢！
 
+赞助我：[Buy me a coffee](https://buymeacoffee.com/ansertbyu)
+
+非常感谢！
+
+此外感谢LocalLLama Reddit，让我学到很多知识，有很多不吝分享的人们教会我很多东西。
+
+感谢我的好兄弟白云酱（？）通过不懈的（？）实践（！？）、探索与讨论为这篇文章的写作提供重要的支持！
+
 ## 目录
 
 - [本地部署大语言模型的中文教学](#本地部署大语言模型的中文教学)
@@ -240,6 +248,8 @@ K Quantization vs Perplexity
 ![Claude recall accuracy](image-1.png)
 
 ## 如何为LLM配置一台电脑
+
+来自Reddit，
 
 ## 选择你要用的模型
 ### Hugging face demos
