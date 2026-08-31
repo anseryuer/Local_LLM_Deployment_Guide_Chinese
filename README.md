@@ -11,7 +11,7 @@ Hello！大家好，这里是 Anser！
 
 LLM 的硬件和软件仍在快速更新。如果你发现事实错误或过时内容，欢迎提交 Issue 或 PR。
 
-赞助我：[Buy me a coffee](https://buymeacoffee.com/ansertbyu)
+赞助我：[微信赞助（点击查看二维码）](wechat-sponsor.jpg) · [Buy me a coffee](https://buymeacoffee.com/ansertbyu)
 
 也感谢 [r/LocalLLaMA](https://www.reddit.com/r/LocalLLaMA/) 中公开硬件测试、运行参数和故障排查过程的各位。
 
@@ -1349,3 +1349,10 @@ API 等价成本 = 非缓存输入 Token / 1M × 输入价格
 部署前先确定模型、上下文长度、并发和延迟目标，再计算权重与 KV cache 容量，并使用真实任务测量准确率、TTFT、ITL、throughput 和功耗。
 
 模型能够启动只说明当前配置满足最低运行条件。是否适合长期部署，还取决于输出质量、延迟、吞吐、稳定性和总成本。
+
+---
+
+如果这篇教程对你有帮助，欢迎支持后续更新：
+
+- [微信赞助（点击查看二维码）](wechat-sponsor.jpg)
+- [Buy Me a Coffee](https://buymeacoffee.com/ansertbyu)
