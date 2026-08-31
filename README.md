@@ -507,18 +507,123 @@ Intel 官方公布的产品名是 **Crescent Island**；没有查到名为 Cresc
 
 ### 多显卡与多机
 
-多卡能解决容量问题，但不会自动线性加速。
+多卡有两个不同目标：
 
-- **Tensor Parallel（TP）**：一层矩阵分到多卡，每层都要通信；
-- **Pipeline Parallel（PP）**：不同层放在不同卡；流水线未填满或排空时会产生空闲阶段；
-- **Expert Parallel（EP）**：MoE 的专家分到不同卡，需要 all-to-all；
-- **Data Parallel（DP）**：每组卡复制一份模型，服务不同请求，适合提升吞吐。
+1. **容量**：模型、KV cache 或并发请求装不进一张卡；
+2. **速度**：模型能装进一张卡，但单卡的计算或带宽不够，需要提高总吞吐。
 
-两张卡可以分担模型容量，但每层跨卡同步会增加 latency。PCIe 4.0 x16 单向理论带宽约为 32GB/s；H100 SXM 的 NVLink 聚合双向带宽约为 900GB/s。并行策略需要频繁交换 activation 或专家 Token 时，互联差异会直接影响扩展效率。
+“两张 32GB 显卡一共有 64GB”只说明物理容量总和。两张卡的显存仍然彼此独立，运行时必须决定哪些权重放在哪张卡，以及推理过程中何时跨卡传输数据。不同并行方式不能只按名称比较，需要看三件事：权重如何放置、每次传输什么、传输在一层模型中发生几次。
 
-10GbE 的单向理论带宽约为 1.25GB/s，远低于显存内部的数百 GB/s 至数 TB/s。它可以用于请求级分流、通信量较低的 pipeline 或特定 offload；需要每层同步或 all-to-all 的并行方式会受到网络带宽和延迟限制，四台机器的性能不能按设备数量直接相加。
+| 方法 | 权重如何放置 | 推理时主要传什么 | 适合解决的问题 |
+|---|---|---|---|
+| Data Parallel（DP） | 每个 replica 保存一份完整模型；一个 replica 也可以由一组 TP/PP GPU 构成 | 不同 replica 之间通常没有逐层 activation 通信 | 模型已经能装下，希望处理更多独立请求 |
+| Tensor Parallel（TP） | 每一层的大矩阵沿行或列切到多张 GPU | 每层 attention 和 MLP 的中间 activation，需要 all-reduce、all-gather 或 reduce-scatter | 单卡装不下，且 GPU 之间有低延迟、高带宽互联 |
+| Pipeline Parallel（PP） | 连续的层分别放到不同 GPU，例如 80 层模型两卡各放约 40 层 | 每个 microbatch 在 stage 边界传一次 hidden state | 单卡装不下，但跨卡互联比 NVLink 慢；或需要跨机器切分 |
+| Expert Parallel（EP） | MoE 的不同 expert 放到不同 GPU；attention、router 和 shared expert 可能复制或另行 TP | 每个 MoE 层把 Token hidden state 发给被选中的 expert，再把结果发回，通常是两次 all-to-all | MoE expert 权重装不下或需要并行计算多个 expert |
 
-Thunderbolt 5、RDMA 和高速 NIC 可以提高互联带宽并降低部分通信开销；Apple 新款 Mac Studio 也支持通过 Thunderbolt 5/RDMA 组集群。最终吞吐仍取决于运行时支持、模型切分方式、每 Token 通信量和网络延迟，不能只相加各机器的内存容量和带宽。
+#### Data Parallel：每张卡处理不同请求
+
+如果一个模型连同 KV cache 能装进单张 GPU，DP 是提高多用户吞吐最直接的方法。两张 GPU 各加载一份模型，请求 A 交给 GPU 0，请求 B 交给 GPU 1。两张卡不需要在每一层同步 activation，因此即使两张卡之间只有 PCIe，甚至两台机器之间只有普通网络，也可以工作。
+
+DP 不会增加单个 replica 的模型容量。一个 40GB 权重模型不能因为有两张 32GB 卡就使用纯 DP；它仍然需要 TP 或 PP 把一个 replica 切开。另一方面，如果 20GB 模型已经能装进每张卡，两张卡做 DP 通常比把同一个请求做 TP 更适合提高总 requests/s。理想情况下总吞吐接近 replica 数量的倍数，直到 API 网关、CPU、网络、请求分布或某个 replica 的 KV cache 成为限制。
+
+#### Tensor Parallel：一层矩阵由多张卡共同计算
+
+TP 会切分每一层的权重。例如一个线性层的权重矩阵可以按输出列切开，两张 GPU 各计算一半；下一步需要把结果合并，或把下一层输入按另一种方式切开。大矩阵的每卡占用接近原来的 `1 / TP`，但 norm、部分 embedding 和 metadata 可能复制；attention 的 KV heads 通常随 TP 切分，GQA 模型在 KV head 数不能整除 TP degree 时也可能复制，所以每卡显存不会严格等于总占用除以卡数。Megatron 风格的 Transformer TP 通常在一个 Transformer layer 中为 attention output 和 MLP output 各进行一次 collective；具体是 all-reduce、all-gather 还是 reduce-scatter，取决于模型和运行时。
+
+TP 传输的是 activation，不是每一步重新传整份模型权重。设一次 collective 的 activation payload 为：
+
+```text
+S = 本次参与计算的 Token 数 M × hidden size H × 每元素 bytes
+```
+
+使用 ring all-reduce 时，`P` 张卡中每张卡的发送量近似为 `2 × (P-1) / P × S`，接收量也近似相同。假设模型 hidden size 为 8,192，activation 使用 BF16，TP=2，并且每层有两次同等大小的 collective：
+
+```text
+M = 1：S = 1 × 8,192 × 2 bytes = 16KiB
+每层每张卡约发送 2 × 16KiB = 32KiB，同时接收约 32KiB
+80 层约发送 2.5MiB，同时接收约 2.5MiB，但会启动约 160 次 collective
+
+M = 2,048：S = 32MiB
+80 层约发送 5GiB，同时接收约 5GiB
+```
+
+`M=1` 时总字节数不大，但 160 次同步的启动延迟可能比传输时间更重要；`M=2,048` 时数据量明显增大，互联带宽更重要。因此 TP 同时要求低延迟和高带宽。NVLink/NVSwitch 更适合 TP；跨 NUMA 的 PCIe 或跨机器 Ethernet 即使能够运行，也可能抵消一部分计算加速。上面的数字用于说明数量级，GQA、sequence parallel、fused collective 和不同 TP 实现会改变实际通信次数和 payload。
+
+#### Pipeline Parallel：不同 GPU 保存不同层
+
+PP 不切一层内部的矩阵。假设模型有 80 层，PP=2 时可以让 GPU 0 保存前 40 层、GPU 1 保存后 40 层。KV cache 也按层保存在对应 GPU。每个 microbatch 经过第一个 stage 后，只需要把边界处的 hidden state 发给第二个 stage。
+
+hidden size 仍为 8,192、BF16 时，单个 Token 通过一个 stage 边界的 payload 约为：
+
+```text
+8,192 × 2 bytes = 16KiB
+```
+
+两阶段 PP 每个 Token 只跨一个边界；TP=2 则几乎每层都要同步。因此 PP 对慢互联更宽容。代价是一个请求必须先完成前半模型，再计算后半模型。只有一个 Decode 请求时，两张卡不能同时计算这个 Token 的不同层，单请求 latency 通常不会因为 PP=2 减半。请求或 microbatch 足够多时，GPU 0 可以处理下一批请求的前半段，同时 GPU 1 处理上一批的后半段，才会形成流水线。stage 的层数、计算量或 KV 占用不均衡时，较慢的 stage 决定总吞吐。
+
+#### Expert Parallel：MoE Token 在 GPU 之间重新分发
+
+EP 只适用于 MoE。router 为每个 Token 选择 top-k expert 后，运行时需要把该 Token 的 hidden state 发到保存相应 expert 的 GPU；expert 完成计算后再把结果送回原来的 Token 顺序。一次 MoE 层通常至少包括 dispatch 和 combine 两次 all-to-all。
+
+忽略协议和 padding，单方向的原始 payload 下限约为：
+
+```text
+Token 数 M × top-k × hidden size H × 每元素 bytes
+```
+
+例如 `M=256`、`top-k=2`、`H=8,192`、BF16 时，dispatch 数据约为 8MiB，返回结果又约为 8MiB；如果有 64 个 MoE 层，所有层的这部分原始数据总和约为 1GiB。实际流量还受 expert 分布、负载不均、capacity/padding、量化和通信实现影响。EP 的 all-to-all 会同时使用多条链路，因此比只跨 stage 边界一次的 PP 更依赖互联拓扑。大量 Token 被路由到少数 expert 时，即使总带宽足够，也会出现部分 GPU 忙、部分 GPU 等待。
+
+#### 三种具体机器应该怎样选
+
+**两张 RTX 5090，主板将每张卡协商为 PCIe 5.0 x8。** [PCI-SIG 给出的](https://pcisig.com/sites/default/files/files/PCI-SIG-Seamless_Transition_to_PCIe_5.0_in_System_Implementations_FINAL.pdf) PCIe 5.0 x8 单向理论 payload 带宽约为 31.5GB/s；实际带宽更低。RTX 5090 官方规格为 32GB GDDR7，并明确不支持 NVLink。
+
+继续使用前面的 80 层、hidden size 8,192、BF16 例子：当 `M=2,048` 时，TP=2 每张卡累计发送约 5GiB，单按 31.5GB/s 相除，链路传输时间下限已经约为 0.17 秒；PP=2 只在一个 stage 边界发送约 32MiB，对应下限约为 1 毫秒。实际程序还会受到协议、同步和带宽利用率影响。这不是说 PP 的端到端速度必然快 170 倍，因为两种方式的 GPU 计算重叠和流水线利用率不同；它说明两者需要互联传输的数据量不是同一个数量级。
+
+- 模型能装进单张 32GB：优先做两个 DP replica，提高总吞吐；TP 通常只会增加逐层通信。
+- 模型不能装进单卡，但能装进两卡：TP=2 和 PP=2 都可能解决容量，当前 vLLM 文档对没有 NVLink 的 GPU 建议优先考虑 PP，以减少通信开销。PP 需要足够并发才能让两个 stage 同时工作。
+- 只服务一个对话：PP 不会把一个 Token 的 80 层并行成两半同时计算；TP 能并行矩阵计算，但 PCIe 通信是否抵消收益必须实测。
+- 不要假设两张消费卡一定支持有效的 PCIe P2P。P2P 不可用时，通信可能经 host memory 中转，多占用 PCIe 并增加延迟。先运行后文的拓扑和 P2P 检查，再用 NCCL 测试实际 all-reduce 带宽与延迟。
+
+**两台 DGX Spark，通过 ConnectX-7 直连。** 每台 Spark 有 128GB LPDDR5X、273GB/s 本地内存带宽；每个 ConnectX-7 QSFP 端口最高 200Gb/s，即 25GB/s 原始单向网络带宽，而且官方当前只支持 Ethernet 配置。两台机器的 256GB 是分布式容量，不是一块 256GB 共享内存。
+
+- 模型能装进单台 128GB：两台各放一份模型做 DP，通常最适合提高总请求吞吐。
+- 模型必须使用两台容量：NVIDIA 当前的[双 Spark vLLM 官方流程](https://build.nvidia.com/spark/vllm/multi-node)使用 Ray 和 `--tensor-parallel-size 2`。需要现成、已给出具体命令的方案时，应先使用这个 TP=2 配置并实测，而不是假设 PP 已在同一模型和容器上得到相同程度的验证。
+- 从通信量分析，TP=2 仍会在几乎每层做 collective，对 200GbE 的延迟与带宽敏感。如果目标运行时和模型明确支持跨节点 PP=2，它只在 stage 边界发送 activation，可能是高并发 throughput 的备选方案；它的单请求 latency、流水线利用率和实际兼容性必须与官方 TP=2 配置 A/B 测试。vLLM 对“没有 NVLink 的普通多卡节点”给出的 PP 建议，不能直接覆盖 DGX Spark 当前的专用 recipe。
+- EP 会在每个 MoE 层进行 all-to-all。只有两个节点也仍会反复经过网络，不能因为 MoE 的激活参数少就忽略通信。
+- 25GB/s 是线路上限，不是应用可得到的 NCCL payload 带宽；TCP/RoCE 配置、GPU Direct、消息大小和 NCCL 算法都会影响结果。
+
+**双路 CPU、八张 GPU 的服务器。** `nvidia-smi` 能看到八张卡，不代表任意两张卡之间的路径相同。常见设计是 GPU 0～3 接近 CPU/NUMA 0，GPU 4～7 接近 CPU/NUMA 1。若拓扑矩阵中同组显示 `PIX`、`PXB` 或 `NV#`，而跨组显示 `SYS`，跨组流量就需要经过 PCIe host bridge 和 CPU 间的 UPI/QPI 类 NUMA 互联。
+
+- 模型能装进四张卡：可以在 0～3 与 4～7 内分别做 TP=4，再做两个 DP replica；逐层 TP 通信留在较快的四卡组内。
+- 模型必须使用八张卡：一种常见组合是每个 NUMA 域内 TP=4，两个域之间 PP=2，也就是一个 replica 的 `TP=4, PP=2`。跨 `SYS` 边界只传 pipeline activation，不在每层做八卡 TP all-reduce。
+- 如果服务器有 NVSwitch，使八张 GPU 之间都显示高速 `NV#`，TP/EP 可以跨更大的 GPU group；如果只有部分 GPU 直连 NVLink，group 应按实际 NVLink clique 划分。
+- 进程的 CPU 核、系统内存和 NIC 也要绑定到相应 NUMA 域。否则数据可能先跨 CPU socket，再进入本地 GPU 或 NIC。
+
+#### 先查看拓扑，再决定并行方式
+
+NVIDIA 驱动提供以下检查：
+
+```bash
+nvidia-smi topo -m          # GPU、NIC、CPU/NUMA affinity 与连接矩阵
+nvidia-smi topo -p2p p      # PCIe P2P 能力
+nvidia-smi topo -p2p n      # NVLink P2P 能力
+nvidia-smi topo -cpu        # GPU 对应的 CPU 和内存 NUMA affinity
+nvidia-smi nvlink -s        # NVLink 是否 active，以及驱动报告的链路带宽
+```
+
+拓扑矩阵中的常见标记为：
+
+- `PIX`：最多经过一个 PCIe switch；
+- `PXB`：经过多个 PCIe switch，但不经过 CPU host bridge；
+- `PHB`：经过 PCIe host bridge，通常是 CPU；
+- `NODE`：经过同一 NUMA node 内的多个 host bridge；
+- `SYS`：还要经过不同 NUMA node 之间的 SMP 互联，例如 UPI/QPI；
+- `NV#`：存在一组由 `#` 条 NVLink 组成的连接。
+
+这些命令描述路径和驱动能力，不等于实测吞吐。应再用 [NVIDIA nccl-tests](https://github.com/NVIDIA/nccl-tests) 测 `all_reduce_perf`、`all_gather_perf` 和 `alltoall_perf`，并使用与真实 Prefill/Decode 接近的消息大小。并行策略的通常顺序是：模型能单卡运行时先比较单卡与 DP；需要单机切分时优先把 TP/EP 放在 NVLink/NVSwitch 域内；跨较慢的 NUMA 或机器边界使用 PP；最后用目标并发、TTFT、ITL 和总 tokens/s 验证。
+
+规格与行为来源：[vLLM Parallelism and Scaling](https://docs.vllm.ai/en/latest/serving/parallelism_scaling/)、[vLLM Optimization and Tuning](https://docs.vllm.ai/en/latest/configuration/optimization/)、[RTX 5090 官方规格](https://www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5090/)、[DGX Spark 硬件](https://docs.nvidia.com/dgx/dgx-spark/hardware.html)、[DGX Spark ConnectX-7](https://docs.nvidia.com/dgx/dgx-spark/spark-clustering.html)、[双 Spark vLLM 流程](https://build.nvidia.com/spark/vllm/multi-node)与 [nvidia-smi 文档](https://docs.nvidia.com/deploy/nvidia-smi/index.html)。
 
 ---
 
@@ -761,7 +866,66 @@ PagedAttention 使用与操作系统虚拟内存相似的 block 映射：
 
 PagedAttention 不改变模型的 attention 定义。它改变 KV cache 的物理存储和地址映射，使内存按 block 分配，并把浪费主要限制在每个序列最后一个未填满的 block。可用显存因此可以容纳更多活跃序列，提高 continuous batch 的大小和总 throughput。
 
-**Continuous batching** 会在每个调度步骤移除已经完成的序列，并加入新的等待请求。静态 batching 必须等待同一 batch 中最长的序列结束，其他已完成序列占用的 batch slot 在此期间无法处理新请求；continuous batching 可以避免这部分空闲。
+### Continuous Batching 到底调度什么
+
+静态 batching 会先固定一组请求，再运行到整组完成。假设四个请求分别输出 32、128、512 和 1,024 Token：第一个请求完成后，它原来的位置不能立刻交给新请求，整组通常仍要等 1,024 Token 的请求结束。输出长度差异越大，空闲位置越多。
+
+Continuous batching 不把“一个 batch”视为从开始到结束不变的请求集合。vLLM 的调度器会在每一次模型迭代前重新决定本轮处理哪些 Token。当前调度受三个不同上限约束：
+
+- `max_num_batched_tokens`：一次迭代最多处理多少 Token；
+- `max_num_seqs`：一次迭代最多包含多少条 sequence；
+- KV cache 容量：所有正在运行请求的已生成和历史 Token 能否继续保存在 GPU 中。
+
+以普通自回归 Decode 为例，一条正在运行的 sequence 在一次迭代中通常只请求计算一个新 Token；Prefill 则可能一次提交数百或数千个输入 Token。一次典型调度过程如下：
+
+1. 接收新请求并放入 waiting queue；
+2. 移除已经完成或取消的请求，释放其 KV block；
+3. 在 `max_num_seqs`、Token budget 和剩余 KV cache 允许的范围内选择本轮 sequence；
+4. 把选中的 Decode Token 与 Prefill Token 组成一次 batched forward；
+5. 保存新产生的 KV，输出采样结果；
+6. 下一轮重新调度，刚释放的位置可以立即接纳等待请求。
+
+vLLM 默认调度策略是 FCFS，也可以使用 priority。当前 vLLM V1 在可以启用 chunked prefill 时，会先调度等待中的 Decode，再用 `max_num_batched_tokens` 的剩余预算处理 Prefill；一个长 prompt 如果放不下，会拆成多个 chunk。这样做可以避免一条 100,000 Token 的 Prefill 独占整次迭代，也可以在同一个 batch 中混合 compute-bound 的 Prefill 和 memory-bound 的 Decode。
+
+假设设置为：
+
+```text
+max_num_seqs = 256
+max_num_batched_tokens = 8,192
+```
+
+某轮已经有 200 条 Decode sequence，每条需要下一个 Token，那么它们先使用约 200 个 Token budget；剩余约 7,992 个可以用于新请求的 Prefill chunk。这里的 256 是单次迭代的 sequence 上限，不表示服务器最多只能接收 256 个 HTTP 请求。其余请求可以继续排队；能否同时保留 256 条活跃 sequence，还要看它们的上下文占用是否超过 KV cache。
+
+调度器能够直接填满的是 Token budget 和 sequence slots，不是一个精确的 FLOP budget。一个带有很长 KV context 的 Decode Token、一个短上下文 Decode Token 和一个 Prefill Token 的实际计算量、内存访问量并不相同。因此 `max_num_batched_tokens=8,192` 不能直接换算成固定 GPU 利用率，仍需用真实长度分布测量。
+
+如果 KV cache 不足，调度器不能只靠增加 `max_num_seqs` 解决。vLLM 可能需要 preempt 一些 sequence，并在之后重新计算被释放的 KV；频繁 preemption 会浪费计算。启动日志中的 `GPU KV cache size` 和 `Maximum concurrency` 是容量估算，实际并发仍会随每条请求的真实上下文长度变化。
+
+### 10,000 个请求到来后，吞吐和单请求速度怎样变化
+
+需要把四个数字分开：到达并发、活跃 sequence 数、总 output tokens/s、每条请求的 token/s。它们不是同一个指标。
+
+| 请求负载 | GPU 与活跃 batch | 总吞吐 | 单条活跃请求速度 | 排队与 TTFT |
+|---|---|---|---|---|
+| 很低 | GPU 经常没有足够 Token 可算 | 增加请求通常会明显提高总 tokens/s | 通常最高或接近最高 | 很低 |
+| 接近饱和 | 权重读取和矩阵计算被更多 Token 复用，活跃 batch 增大 | 继续上升，但增幅逐渐变小 | 可能开始下降 | P95/P99 TTFT 开始上升 |
+| 已饱和 | GPU、KV cache 或调度上限已满 | 接近平台上限，不再随请求数线性增加 | 大致受“总吞吐 ÷ 活跃 Decode 数”限制 | 新请求主要进入 waiting queue |
+| 长期超载 | 请求进入速度高于完成速度 | 仍停在平台上限 | 不会因队列更长而提高 | 队列持续增长，超时和取消增加 |
+
+举一个只说明数量关系的例子。假设某个模型在目标输出长度下实测为 8,000 output token/s，最多保持约 256 条活跃请求，现在同时到达 10,000 条请求，并且每条都要输出 512 Token。如果 256 条活跃请求都处于 Decode，并近似公平地分享调度时间：
+
+```text
+活跃请求平均可分到的速度 ≈ 8,000 ÷ 256 = 31.25 token/s
+总输出量 = 10,000 × 512 = 5,120,000 Token
+忽略 Prefill 的理想最短清空时间 = 5,120,000 ÷ 8,000 = 640 秒
+```
+
+Continuous batching 会让先完成的请求立即被 waiting queue 中的新请求替换，但它不能把 8,000 token/s 变成无限吞吐。后面的请求可能等待数分钟才开始 Prefill。实际时间还要加入输入 Prefill、长度差异、采样、网络和调度开销，因此会超过 640 秒。
+
+同样可以用到达率判断服务是否会持续积压。如果平均每个请求输出 512 Token，8,000 output token/s 对应的 Decode 完成率上限约为 `8,000 ÷ 512 = 15.6 requests/s`，而请求长期以 20 requests/s 到达，那么只考虑输出也会每秒积压约 4.4 个请求。增加 queue 长度只能减少立即拒绝，不能消除这个容量缺口。
+
+总吞吐达到平台后，继续提高并发通常会降低每个用户看到的 token/s，并提高 TTFT 和 end-to-end latency。反过来，把并发限制得过低又可能使 GPU 的矩阵单元和内存带宽没有被充分利用。因此正确目标不是“batch 越大越好”，而是在 P95/P99 TTFT、ITL 和错误率约束下找到最高总吞吐。
+
+调 `max_num_batched_tokens` 时也存在具体取舍。较小的值限制每轮插入的 Prefill 工作量，通常有利于 Decode ITL；较大的值能一次处理更多 Prefill Token，可能缩短长 prompt 的 TTFT 并提高总吞吐，但也会让混合 batch 中的 Decode 等待更久。vLLM 当前文档对小模型和大 GPU 给出过大于 8,192 的吞吐建议，这不是所有模型的固定最优值。需要按真实 prompt/output 长度、请求到达率和 GPU 重新 sweep。
 
 vLLM 原始 [PagedAttention 论文](https://arxiv.org/abs/2309.06180)在论文所用模型、硬件和基线下报告了同等延迟时 2～4 倍的 serving throughput 提升；早期博客在其他旧基线下报告过更大的倍数。这些数字不能直接外推到不同模型、运行时版本和 GPU，当前部署需要使用相同负载重新测试。
 
@@ -894,6 +1058,12 @@ Prefix cache 的命中条件是完全一致的 Token 前缀。可以采用以下
 - Transformer：[Attention Is All You Need](https://arxiv.org/abs/1706.03762)
 - H200：[NVIDIA 官方规格](https://www.nvidia.com/en-us/data-center/h200/)
 - PagedAttention：[论文](https://arxiv.org/abs/2309.06180)与 [vLLM 介绍](https://vllm.ai/blog/2023-06-20-vllm)
+- vLLM scheduler 与 chunked prefill：[SchedulerConfig](https://docs.vllm.ai/en/latest/api/vllm/config/scheduler/)与[优化说明](https://docs.vllm.ai/en/latest/configuration/optimization/)
+- vLLM 多 GPU 与多机并行：[Parallelism and Scaling](https://docs.vllm.ai/en/latest/serving/parallelism_scaling/)
+- NVIDIA GPU/NIC/NUMA 拓扑：[nvidia-smi 文档](https://docs.nvidia.com/deploy/nvidia-smi/index.html)
+- DGX Spark 多机互联：[硬件规格](https://docs.nvidia.com/dgx/dgx-spark/hardware.html)与 [ConnectX-7 配置](https://docs.nvidia.com/dgx/dgx-spark/spark-clustering.html)
+- 双 DGX Spark 的 vLLM 配置：[NVIDIA 官方流程](https://build.nvidia.com/spark/vllm/multi-node)
+- NVIDIA collective 通信实测：[nccl-tests](https://github.com/NVIDIA/nccl-tests)
 - vLLM prefix caching：[Automatic Prefix Caching](https://docs.vllm.ai/en/latest/features/automatic_prefix_caching.html)
 - vLLM speculative decoding：[Speculators 文档](https://docs.vllm.ai/projects/speculators/en/latest/user_guide/algorithms/)
 - DeepSeek-V3 MTP 与 FP8 权重：[官方仓库](https://github.com/deepseek-ai/DeepSeek-V3)
