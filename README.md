@@ -1,681 +1,831 @@
 # 本地部署大语言模型的中文教学
 
-本文确实写了很多东西，但是一切都变化太快了，新的东西蹦出来，旧的东西被扔掉，我也太太太忙了，所以不更了，希望已经写了的这么多东西能够帮到各位！
+> 最后一次大修：2026 年 8 月 30 日
+> 这篇文章变化得很快，所以我会尽量讲清楚“为什么”，而不是只列一堆过几个月就失效的型号和命令。
 
-Hello!
+Hello！大家好，这里是 Anser！
 
-大家好，这里是Anser!这个是一个尽可能详细地关于大语言模型LLM的本地部署的教学。希望能帮到各位！
+这是一篇尽可能详细、但尽量不说人话看不懂的本地大语言模型（LLM）部署教程。
 
-如果你希望能够本地运行LLM，不想花钱买API，想要在本地聊天和制作自己的工具，那么这篇文章就是适合你的！
+如果你想让模型在自己的电脑上聊天、写代码、读 PDF，或者给一个几十到几百人的小团队搭一套内部 AI 服务，但看到 CUDA、显存、量化、KV cache、vLLM 这些词就头大，那么这篇文章就是写给你的。
 
-我已经制作了自己用的两个应用。一个是一个多语言翻译器，另一个是一个总结长篇PDF或者网课视频的小工具。所以在这里分享一下我的经验！
-
-我很有可能会犯点错，不过请谅解！还可以告诉我哪里错了怎么改，谢谢！
+我很有可能会犯错。LLM 软硬件的发展速度实在太离谱了，如果你发现哪里过时了或者讲错了，欢迎提 Issue 或 PR。谢谢！
 
 赞助我：[Buy me a coffee](https://buymeacoffee.com/ansertbyu)
 
-非常感谢！
+也感谢 [r/LocalLLaMA](https://www.reddit.com/r/LocalLLaMA/) 里愿意分享测试和踩坑经验的各位。
 
-此外感谢LocalLLama Reddit，让我学到很多知识，有很多不吝分享的人们教会我很多东西。
-
-不会再更新了,一切都变化得太快了。如果要一直更新的话,就要花很长时间,而我真的太忙了。
+---
 
 ## 目录
 
-- [本地部署大语言模型的中文教学](#本地部署大语言模型的中文教学)
-  - [目录](#目录)
-  - [了解大语言模型LLM](#了解大语言模型llm)
-    - [什么是LLM？](#什么是llm)
-    - [GPT架构](#gpt架构)
-    - [Transformers](#transformers)
-    - [Tokenizer](#tokenizer)
-      - [BPE (Byte Pair Encoding) Tokenizer算法示例](#bpe-byte-pair-encoding-tokenizer算法示例)
-        - [算法步骤](#算法步骤)
-        - [示例](#示例)
-        - [步骤1-2: 初始化](#步骤1-2-初始化)
-        - [步骤3-5: 首次迭代](#步骤3-5-首次迭代)
-        - [后续迭代](#后续迭代)
-        - [最终结果](#最终结果)
-      - [实际应用](#实际应用)
-      - [Tokenizer的问题](#tokenizer的问题)
-    - [Word Embedding](#word-embedding)
-    - [注意力机制与上下文长度](#注意力机制与上下文长度)
-  - [电脑硬件、操作系统、GPU加速的基础知识](#电脑硬件操作系统gpu加速的基础知识)
-    - [CPU和RAM](#cpu和ram)
-    - [GPU与VRAM](#gpu与vram)
-      - [GPU性能](#gpu性能)
-      - [VRAM(显存)](#vram显存)
-      - [多显卡运算](#多显卡运算)
-      - [显存带宽](#显存带宽)
-      - [GPU优化](#gpu优化)
-    - [推理时候的过程](#推理时候的过程)
-    - [内存与显存占用](#内存与显存占用)
-    - [FP16与Quantization](#fp16与quantization)
-      - [半精度(FP16):](#半精度fp16)
-      - [FP8:](#fp8)
-      - [BF16 (Brain Float 16):](#bf16-brain-float-16)
-      - [量化(Quantization):](#量化quantization)
-    - [Finetune](#finetune)
-    - [上下文Context](#上下文context)
-      - [Recall accuracy](#recall-accuracy)
-  - [如何为LLM配置一台电脑](#如何为llm配置一台电脑)
-    - [便携性](#便携性)
-  - [选择你要用的模型](#选择你要用的模型)
-    - [Hugging face demos](#hugging-face-demos)
-    - [技术报告](#技术报告)
-    - [Benchmark和ranking](#benchmark和ranking)
-      - [LMSYS Chatbot Arena](#lmsys-chatbot-arena)
-    - [常用模型推荐](#常用模型推荐)
-    - [MOE 模型](#moe-模型)
-    - [MoE 如何与内存带宽相关？](#moe-如何与内存带宽相关)
-      - [MoE 的定义与工作原理](#moe-的定义与工作原理)
-  - [对话与提示](#对话与提示)
-    - [系统提示System prompt](#系统提示system-prompt)
-    - [系统提示的制作方法](#系统提示的制作方法)
-    - [对话格式](#对话格式)
-  - [部署方法](#部署方法)
-    - [llama.cpp系列](#llamacpp系列)
-      - [lmstudio](#lmstudio)
-      - [Ollama](#ollama)
-    - [ONNX, Intel OpenVino, Intel Ipex-LLM.](#onnx-intel-openvino-intel-ipex-llm)
-    - [Nvidia NIM](#nvidia-nim)
-    - [vLLM](#vllm)
-    - [Python 相关](#python-相关)
-      - [Conda与Docker](#conda与docker)
-      - [Hugging Face Transformers](#hugging-face-transformers)
-      - [Pytorch与Tensorflow](#pytorch与tensorflow)
+- [先说结论：我到底该用什么？](#先说结论我到底该用什么)
+- [第一部分：LLM 到底在干什么？](#第一部分llm-到底在干什么)
+  - [Token、Transformer 与自回归生成](#tokentransformer-与自回归生成)
+  - [Prefill 和 Decode](#prefill-和-decode)
+  - [KV cache：模型为什么不用每次从头算？](#kv-cache模型为什么不用每次从头算)
+  - [Prefix caching：为什么相同前缀会便宜很多？](#prefix-caching为什么相同前缀会便宜很多)
+  - [MTP 与 speculative decoding](#mtp-与-speculative-decoding)
+- [第二部分：决定速度的到底是什么？](#第二部分决定速度的到底是什么)
+  - [容量、带宽和算力](#容量带宽和算力)
+  - [Latency 与 Throughput](#latency-与-throughput)
+  - [模型到底要占多少内存？](#模型到底要占多少内存)
+  - [MoE：总参数很大，激活参数很小](#moe总参数很大激活参数很小)
+- [第三部分：精度与量化](#第三部分精度与量化)
+  - [FP4 为什么必须缩放？](#fp4-为什么必须缩放)
+  - [MXFP4 与 NVFP4](#mxfp4-与-nvfp4)
+  - [不同 GPU 架构支持什么精度？](#不同-gpu-架构支持什么精度)
+  - [训练和推理应该选什么精度？](#训练和推理应该选什么精度)
+- [第四部分：如何为 LLM 配一台电脑](#第四部分如何为-llm-配一台电脑)
+- [第五部分：如何选择模型](#第五部分如何选择模型)
+- [第六部分：部署方法](#第六部分部署方法)
+- [第七部分：vLLM、PagedAttention 与高并发](#第七部分vllmpagedattention-与高并发)
+- [第八部分：怎样提高 KV cache 命中率](#第八部分怎样提高-kv-cache-命中率)
+- [第九部分：三套实际方案](#第九部分三套实际方案)
+- [常见误区](#常见误区)
+- [延伸阅读与资料来源](#延伸阅读与资料来源)
 
-## 了解大语言模型LLM
-我建议你在开始部署和使用LLM之前先对它们这一类的模型有一个具体的了解。
+---
 
-如果你已经有了解了，只是想知道如何操作，我推荐你跳过这部分。
+## 先说结论：我到底该用什么？
 
-其实我讲的还是太浅了，这里我推荐真大佬Andrej Karpathy的YouTube视频：[Intro to Large Language Models](https://www.youtube.com/watch?v=zjkBMFhNj_g)
+如果你现在就想把模型跑起来，不想先读两万字：
 
-讲的超好，强烈推荐，无需编程经验和数学基础也能听懂。强烈推荐！
+| 你的情况 | 建议从这里开始 |
+|---|---|
+| 完全小白，只想在自己的电脑上聊天 | [LM Studio](https://lmstudio.ai/) |
+| 想用一条命令启动模型，给别的软件调用 | [Ollama](https://ollama.com/) |
+| Windows、macOS、Linux 都想跑，或者只有 CPU/核显 | [llama.cpp](https://github.com/ggml-org/llama.cpp) |
+| 有 NVIDIA/AMD GPU，想给多人提供高吞吐 API | [vLLM](https://github.com/vllm-project/vllm) |
+| 只用 NVIDIA，愿意折腾以追求极限性能 | [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) |
+| 公司需要经过验证的容器、监控、生命周期和支持 | [NVIDIA NIM](https://docs.nvidia.com/nim/large-language-models/latest/about-nim-llm/overview.html) |
+| Intel CPU、核显或独显，且需要 Intel 官方路线 | [OpenVINO GenAI](https://github.com/openvinotoolkit/openvino.genai) |
 
-### 什么是LLM？
+然后模型先别贪大：挑一个你的内存能轻松放下的 7B～14B 级模型，使用 Q4 或 Q5 量化，确认聊天、上下文和 GPU 加速都正常，再往上加。
 
-大语言模型（Large Language Model，简称LLM）是一种基于深度学习的自然语言处理模型，能够理解、生成和操作人类语言。
+真的，先跑起来比先买四张显卡重要。
 
-### GPT架构
+---
 
-GPT（Generative Pre-trained Transformer）是目前最流行的LLM架构之一，也是目前所有主流语言大模型的架构。
+## 第一部分：LLM 到底在干什么？
 
-GPT模型采用了Transformer架构的解码器部分，通过自回归方式预测输入文本下一个词，准确来说是Token。
+### Token、Transformer 与自回归生成
 
-GPT的训练通常包含预训练和微调。首先在大规模语料上进行无监督预训练，然后在特定任务上进行微调。
+LLM 看到的不是“字”和“单词”，而是 Token。
 
-这里在预训练时模型会被喂大量的原文本，例如维基百科这类的。它会尝试预测下一个Token(一种文本分割后的词块，你可以这么理解，待会讲)来学习文本中的知识。但是原始模型是不会使用对话的格式和你说话的，唯一会做的就是补全文本。
+比如 `unbelievable` 可能被切成一个或几个 Token；中文的一个汉字有时是一个 Token，有时多个字会合成一个 Token。不同模型使用的 tokenizer 也不同，所以两个模型都显示 50 token/s，并不代表它们每秒生成的中文字符一定一样多。
 
-但是在GPT2被制作出来之后OpenAI的研究人员发现这种预训练模型有很强的多任务能力并且还表现出一定的智能，所以他们陆续制作了GPT3，Instruct-GPT（第一个对话模型）GPT-3.5，GPT4与GPT-4o。
+Tokenizer 通常不是神经网络，它会把文本转换成一串整数 ID。模型再把这些 ID 变成向量，也就是 embedding。
 
-Boom！LLM大爆炸~
+目前绝大多数聊天 LLM 的主体依然属于 decoder-only Transformer。经典起点当然还是那篇神之论文：[Attention Is All You Need](https://arxiv.org/abs/1706.03762)。想看特别适合小白的视觉讲解，我依然强烈推荐 3Blue1Brown 的 [But what is a GPT?](https://www.youtube.com/watch?v=wjZofJX0v4M)。
 
-在完成pre-train后会对模型在人类的对话上进行微调，让后你才能和它进行聊天。微调相当于使用各种方法在对话格式的数据上训练，这样它才会具有遵守人类指令做事情的人类。
+![Transformer 架构示意图](image-3.png)
 
-### Transformers
+“自回归”听起来很吓人，其实就是：
 
-Transformers是一种基于自注意力机制的神经网络架构，最初由Google在2017年提出。
+1. 给模型一段已有 Token；
+2. 模型预测下一个 Token 的概率；
+3. 按照 temperature、top-p 等规则选出一个；
+4. 把这个新 Token 接回末尾；
+5. 再预测下一个。
 
-神之论文：[Attention Is All You Need.](https://arxiv.org/abs/1706.03762)
+所以模型写一句话，不是一次把整句“想”出来，而是一格一格往右生成。
 
-说实在很难想象一个深度学习架构在提出后的这么长的时间里都没有什么大的改动，可见这篇论文有多牛。
+### Prefill 和 Decode
 
-不多说了，上图。
+一次 LLM 请求可以粗略分成两段：
 
-![Transformers](image-3.png)
+**Prefill（预填充）**：模型一次性读取你的 system prompt、聊天记录、文档和问题，为这些输入 Token 计算中间状态，并生成第一个新 Token。
 
-这里左侧的被称为编码器Encoder，右侧的被称为解码器Decoder.因为这篇论文本身是给机器翻译这个任务做的，所以架构是Encoder-Decoder架构，而GPT是Decoder Only的，也就是没有左侧的这块，并且右侧的中间的Multi-Head Attention和Add & Norm也没有。
+**Decode（解码）**：之后一个 Token 一个 Token 地继续生成答案。
 
-一个Transformers通常会堆叠多个Decoder block。参数越多一般就越深，层数也越多。
+这两个阶段的脾气完全不一样：
 
-它的主要组件包括：
+- Prefill 能把大量输入 Token 并行计算，矩阵很大，通常更吃计算能力；
+- Decode 每一步只有少量新 Token，却要经过整套模型，低并发时通常更吃内存带宽。
 
-1. 多头自注意力层
-2. 前馈神经网络
-3. 层归一化
-4. 残差连接
+因此，请不要只问“这张卡多少 TFLOPS”。一张计算能力很强但显存小、带宽低的卡，并不一定适合你要跑的模型。
 
-Transformer通过并行处理输入序列，大大提高了模型的训练效率和性能。
+### KV cache：模型为什么不用每次从头算？
 
-其实你不需要知道模型内具体发生了什么就可以用，但是如果你想要从零开始了解的话我推荐你去看3Blue1Brown的Transformer讲解视频，YouTube和Bilibili上都有，原视频：
+在 causal Transformer 中，前面的 Token 看不到未来。第 100 个 Token 的出现，不会回头改变第 1～99 个 Token 已经算出的 Key 和 Value。
 
-[But what is a GPT? Visual intro to transformers | Chapter 5, Deep Learning](https://www.youtube.com/watch?v=wjZofJX0v4M)
+于是生成第 101 个 Token 时，我们不需要把前 100 个 Token 的注意力中间结果全部重算，只要把之前每一层的 Key 和 Value 留在内存里。这块缓存就是 **KV cache**。
 
-这也讲的很好，适合新手起步学习。
+可以把它理解成模型在每一层做的“读书笔记”：
 
-### Tokenizer
+- 没有 KV cache：每写一个字，都把前面的书从第一页重读一次；
+- 有 KV cache：前面的笔记保留，只阅读刚新增的内容。
 
-我想先指出LLM不通过每个字符来阅读文本，例如当我输入Lowest这个单词的时候它不会看见6个字母，而是一个或两个Token。理解Token对理解LLM至关重要，所有这里有个例子借着讲一讲。
+代价是 KV cache 很占内存，而且会随着上下文长度、同时服务的请求数量和 KV cache 精度近似线性增长。
 
-Tokenizer是将原始文本转换为模型可以理解的数字序列的工具。
+一个常用的粗略公式是：
 
-常见的tokenization方法包括：
-
-1. 字符级：将文本分割成单词。（这个输入长度会爆炸，而且不方便模型获取文本中的信息）
-2. 子词级：将单词进一步分割成更小的单位，如BPE（Byte Pair Encoding）。
-3. 单词级：将文本分割成单个字符。（中日韩和表情包就没法搞了）
-
-LLM通常使用子词级tokenizer，以平衡词汇表大小和表达能力。
-
-什么意思捏？举个例子：
-
-#### BPE (Byte Pair Encoding) Tokenizer算法示例
-
-BPE是一种广泛使用的子词tokenization算法。它通过迭代地合并最频繁出现的字符对来创建新的子词。以下是BPE算法的简化步骤和示例:
-
-##### 算法步骤
-
-1. 准备词汇表和训练语料
-2. 将每个单词拆分为字符序列,并在末尾添加结束符(如"</w>")
-3. 统计所有字符对的频率
-4. 选择最高频率的字符对合并为新的子词
-5. 更新词汇表和语料中的词
-6. 重复步骤3-5,直到达到预设的词汇量或迭代次数
-
-##### 示例
-
-假设我们有以下简单的训练语料:
-
-```
-low lower newest widest
+```text
+KV cache 字节数 ≈ 2 × 层数 × KV head 数 × head dimension
+                 × 每个元素字节数 × 已缓存 Token 数 × 并发序列数
 ```
 
-##### 步骤1-2: 初始化
+前面的 `2` 是 K 和 V 两份。
 
-将单词拆分为字符,添加结束符:
+例如一个 32 层、8 个 KV heads、head dimension 为 128 的 GQA 模型，用 BF16 保存 KV，单个 32K 上下文大约需要：
 
-```
-l o w </w>
-l o w e r </w>
-n e w e s t </w>
-w i d e s t </w>
+```text
+2 × 32 × 8 × 128 × 2 bytes × 32768 ≈ 4 GiB
 ```
 
-初始词汇表:
-```
-l, o, w, e, r, n, s, t, i, d, </w>
-```
+注意，这还没算模型权重、运行时 workspace 和其他请求。
 
-##### 步骤3-5: 首次迭代
+这就是为什么“模型文件明明只有 20GB，我有 24GB 显存，为什么开 128K 上下文就爆了？”答案：你忘了给 KV cache 留座位。
 
-1. 统计字符对频率:
-   ```
-   (e, s): 2
-   (s, t): 2
-   (e, r): 1
-   (l, o): 2
-   (o, w): 2
-   ...
-   ```
+现代模型常用 GQA、MQA 或 MLA 来减少 KV cache；有些运行时也支持 FP8、INT8，甚至 NVFP4 KV cache。代价依然是可能有精度损失，而且必须有合适的 kernel 才会真的更快。
 
-2. 最高频率的对是(e, s), (s, t), (l, o), 和(o, w)。我们选择(e, s)。
+### Prefix caching：为什么相同前缀会便宜很多？
 
-3. 合并(e, s)为新的子词"es":
-   ```
-   l o w </w>
-   l o w e r </w>
-   n e w es t </w>
-   w i d es t </w>
-   ```
+KV cache 不只能在同一次回答中使用，还能跨请求复用。
 
-4. 更新词汇表:
-   ```
-   l, o, w, e, r, n, s, t, i, d, </w>, es
-   ```
+假设 100 个员工都在询问同一本 200 页的公司手册：
 
-##### 后续迭代
-
-继续这个过程,可能的合并顺序:
-1. (l, o) -> "lo"
-2. (o, w) -> "ow"
-3. (es, t) -> "est"
-4. ...
-
-##### 最终结果
-
-经过多次迭代后,我们可能得到这样的词汇表:
-```
-l, o, w, e, r, n, s, t, i, d, </w>, es, lo, ow, est, low, newest, widest
+```text
+[完全相同的 system prompt]
+[完全相同的公司手册]
+[每个人不同的问题]
 ```
 
-这个词汇表现在包含了原始字符、常见的子词和完整的单词。所以当low再次出现时我们就不会把他们仨看作三个单词，而是一个新的Token，所以lowest这个单词实际上就变成了[low]和[est]两个token。同样的方法也适用于中文日文韩文和表情包之类的。
+前两部分的 Token 前缀完全一致，那么它们对应的 KV cache 也一致。服务器第一次算完后，后续请求可以直接复用这部分缓存，只计算各自不同的问题。
 
-#### 实际应用
+这叫 **prefix caching（前缀缓存）**。它节省的是 prefill，不会让后面的长答案自动生成得更快。vLLM 的 [Automatic Prefix Caching](https://docs.vllm.ai/en/latest/features/automatic_prefix_caching.html) 就是干这个的。
 
-简单来说，这种Tokenizer就是一种基于字符组合出现频率的分词方法，Tokenizer不是一个神经网络，并且通常在模型训练前就会练好。
+“相同”通常指相同模型、相同 tokenizer、相同 Token 序列和相同位置。肉眼看上去差不多不够：一个时间戳、随机 ID、JSON 字段顺序或聊天模板变化，都可能从那里开始让缓存 miss。
 
-在实际的大规模语料中,BPE算法会产生更大、更复杂的词汇表。例如,GPT-2使用的词汇表大小为50,257。这种方法允许模型高效地处理常见词、罕见词和未知词,因为它可以将任何单词分解为已知的子词序列。
+### MTP 与 speculative decoding
 
-BPE和其他子词tokenization方法(如WordPiece, SentencePiece)的使用大大提高了LLM处理各种语言和领域文本的能力。
+普通自回归生成一次只确认一个 Token，这个串行过程是低延迟推理的天敌。
 
-如果你想体验一下Tokenizer怎么工作可以去这个试用GPT4 Tokenizer的网站。[OpenAI GPT4 Tokenizer](https://platform.openai.com/tokenizer)
+**Multi-Token Prediction（MTP）** 的训练目标，是让额外的预测模块学习预测更远的未来 Token，而不只学习紧邻的下一个 Token。它有两个作用：
 
-![Example](image-2.png)
+1. 训练时给模型更多学习信号，可能提升主模型能力；
+2. 推理时把 MTP 模块当作一个轻量的“草稿员”，用于 speculative decoding。
 
-此外出现的问号是因为有的时候Tokenizer会把UTF-8编码的字符（例如中文字符和表情）给分成好几个Token所以就没法看出单个Token对应的时哪个字符。
+Speculative decoding 的过程大概是：
 
-#### Tokenizer的问题
+1. 小草稿模型或 MTP head 先快速猜出接下来几个 Token；
+2. 大主模型用一次并行 forward 验证这几个猜测；
+3. 接受符合主模型分布的部分，拒绝后从正确位置继续。
 
-经典问题之9.11和9.9谁大，这里有的时候tokenizer会把11看作一个token然后这也许会干扰llm的reasoning
+只要验证算法实现正确，它不是“用小模型偷偷换掉大模型”，而是在保持目标模型输出分布的前提下减少昂贵的大模型串行步骤。
 
-### Word Embedding
+但是请注意：**MTP 是一种训练目标/模型结构；speculative decoding 是一种推理算法。两者经常搭配，但不是同一个词。** 也可以用独立小模型、EAGLE 等方法做 speculative decoding。
 
-词嵌入是将词语映射到低维稠密向量空间的技术。在这个空间中，语义相近的词会有相似的向量表示。
+DeepSeek-V3 的公开权重就包括单独的 MTP 模块；vLLM 也已经提供 [MTP speculative decoding](https://docs.vllm.ai/projects/speculators/en/latest/user_guide/algorithms/mtp/) 支持。实际加速取决于草稿接受率、batch size、模型结构和 kernel 开销，并不是写上 `MTP` 就必然两倍速度。
 
-在现代LLM中，词嵌入通常是在模型训练过程中学习的，而不是预先定义的。
+---
 
-是的，所以你可以理解为Word Embedding帮助模型把Token投射到一个向量组成的高维空间里，而每个向量都代表了词的意思。
+## 第二部分：决定速度的到底是什么？
 
-### 注意力机制与上下文长度
+### 容量、带宽和算力
 
-注意力机制是Transformer和LLM的核心组件之一。它允许模型在处理输入序列时，动态地关注不同部分的信息。主要类型包括：
+买硬件时最容易混在一起的三个概念是：
 
-1. 自注意力：计算序列内部元素之间的关联。
-2. 交叉注意力：计算两个不同序列之间的关联（在encoder-decoder结构中使用）。
+**容量（GB）**：能不能装下模型权重、KV cache 和运行时。装不下就是装不下，再高的 TFLOPS 也没用。
 
-注意力机制通过计算查询（Query）、键（Key）和值（Value）之间的相似度来实现，使模型能够捕捉长距离依赖关系。
+**内存带宽（GB/s 或 TB/s）**：每秒能把多少权重和 KV 数据喂给处理器。单用户、batch size 很小的 Decode 经常被它限制。
 
-所以当我输入一段话时，模型会借此结构来观察上下文的意思（其实这里有点太简化了）。
+**计算能力（FLOPS/TOPS）**：每秒能做多少运算。Prefill、训练和高 batch 的矩阵乘法更容易吃满算力。
 
-## 电脑硬件、操作系统、GPU加速的基础知识
-电脑硬件相关的知识真的很重要！
+还有一个经常被忽略的量：**互联带宽**。当模型跨显卡、跨机器或跨 MoE 专家时，PCIe、NVLink、Infinity Fabric、网络都可能成为瓶颈。
 
-很多时候我会被问：我的电脑能跑这个吗？请不要轻易的觉得能跑或者不能跑，LLM飞速发展了两年已经有了很多的可用的部署方法，请往下接着读，看看哪一种方法和模型适合你的电脑
+一个帮助理解的简化上限：假设 batch=1，每生成一个 Token 都需要从内存读一遍主要权重，那么：
 
-一台电脑，包括笔记本和台式机，常见的组件包括CPU,RAM(内存),硬盘（存储）。GPU和主板电源等。这里和我们任务相关的就只有CPU,RAM,GPU和GPU自带的VRAM。
+```text
+理论 Decode 速度上限（token/s）≈ 可用内存带宽 ÷ 每 Token 需要读取的权重字节数
+```
 
-### CPU和RAM
-CPU是电脑的中央处理器。现代CPU真的很快，所以我们可以使用CPU进行大语言模型的推理。
+例如一个 8B 密集模型，量化后的有效大小是 5GB，设备真实可用带宽假设是 250GB/s：
 
-现代CPU在推理一些7B模型也能很快。例如我的小笔记本电脑有着AMD Ryzen R5 7640U（一个28W的笔记本处理器，其实很弱）但是在推理llama3 7B的时候却可以到8Tokens每秒。（Token是什么下面会讲）
+```text
+250 ÷ 5 ≈ 50 token/s
+```
 
-RAM也叫内存，不同于硬盘是临时储存数据的地方。
+这是天花板，不是承诺。实际还有 attention、KV cache、kernel 启动、量化解码和系统开销。
 
-对于使用CPU进行推理，以下是一些关键硬件知识：
+批量增大后，一次读入的权重可以服务更多 Token，算术强度上升，工作负载可能从 bandwidth-bound 逐渐变成 compute-bound。这也是为什么服务 100 个用户时，硬件选择和只服务自己时完全不同。
 
-1. **CPU性能，CPU核心数与CPU频率**：
-    对于使用CPU的大语言模型，我们希望CPU的多核性能尽可能地强。
+NVIDIA 对 [prefill 与 decode](https://developer.nvidia.com/blog/mastering-llm-techniques-inference-optimization/) 以及 [roofline 模型](https://developer.nvidia.com/blog/ai-model-co-design-hardware-friendly-llm-design/) 有很清楚的解释。
 
-    CPU核心数决定了同时执行的线程数量。更多的核心数可以提高并行处理能力，从而加快推理速度。你可以在Windows的任务管理器里看到自己的核心数量。
+### Latency 与 Throughput
 
-    CPU频率表示每秒钟执行的指令数。较高的频率意味着更快的计算速度。
+你必须先决定自己在追求什么。
 
-    此外，你还可以使用其他的跑分软件生成的分数来衡量CPU的性能。相关的分数可以在互联网上搜索，比较常见的有GeekBench，Cinebench等。
+**Latency（延迟）**关心单个用户等多久：
 
-    关于CPU的选择：大体来说无所谓，上网找benchmark，看看多核性能谁强然后找个买得起的买就好了。小处确实有差别，但是我觉得不重要，无所谓。
-    
-2. **RAM容量**：
-    RAM是计算机用于存储数据和程序的临时存储器。当使用CPU进行运算时，运算的部分必须存在RAM中。所以RAM大小很大程度决定了LLM能不能跑。我强烈建议你有至少16GB的内存。
+- TTFT（Time To First Token）：点发送后多久看到第一个字；
+- ITL/TPOT（Inter-Token Latency / Time Per Output Token）：之后每个 Token 间隔多久；
+- End-to-end latency：整个回答多久完成。
 
-    较大的RAM容量可以提供更多的内存空间，从而减少数据交换和读取的次数，提高推理效率。
+**Throughput（吞吐）**关心整台服务器单位时间做多少工作：总 output tokens/s、requests/s，以及在某个延迟 SLA 下每张 GPU 每秒能处理多少 Token。
 
-    RAM的大小最好要大于模型的大小+操作系统占用的大小。因为CPU只能直接运算存储在RAM中的数据，所以内存如果小于模型的话你就装不下了。
+如果只给自己聊天，你一般希望 batch 小、TTFT 低、每个对话 token/s 高。
 
-    常见的模型大小就下面这几个挡位，推荐的模型大小对应的内存大小（不过你要小于推荐值下面也有办法，就是使用Quantization压缩模型到更低的精度，不过这样会降低性能就是了，这个后面也会讲）：
-    - 6~8B模型：16GB
-    - 12~15B模型：16GB
-    - 30~35B模型：32GB
-    - 60~75B模型：48GB
-    - 100~130B模型：64GB
+如果你是一家小公司，有几十到几百人共用一个模型，就应该更关心总吞吐、并发、P95/P99 延迟和每百万 Token 的成本。允许每个人稍微慢一点，把更多请求放进 continuous batching，通常能显著提高硬件利用率。
 
+没有一种配置能同时把每个指标拉满。大 batch 提高 throughput，但可能让单请求排队更久；长时间等待凑 batch 更省钱，但用户会觉得它在发呆。
 
-3. **内存带宽**：
-    内存带宽决定了数据在RAM和CPU之间传输的速度。较高的内存带宽可以加快数据的读取和写入速度，提高推理性能。
-    
-    内存带宽对LLM来说速度影响挺大。所以苹果电脑在推理上会很快，因为它的统一内存带宽很高。GPU更快的一个原因也是使用了比普通内存更快的GDDR6内存。
+### 模型到底要占多少内存？
 
-    我的内存使用的是双通道DDR5 5600。你如果会玩超频的话可以超一超内存的频率。支持双通道内存的CPU最好上两根内存条，这样会更快。
+最简单的权重估算：
 
-    一部分高级笔记本或者工作站会使用频率更高的内存，例如DDR5 7500这种的，理论上这个会对CPU推理有提升，但是我也没有，不知道，另外如果你都用上这种高级货了，我建议还是用GPU推理。
+```text
+模型权重 GB ≈ 参数量（B）× 每参数 bit 数 ÷ 8
+```
 
-当选择使用CPU进行大语言模型推理时，建议考虑以上硬件因素，并选择具有较高核心数、频率的CPU和足够的内存RAM容量，以获得更好的性能和推理速度。
+所以 8B 模型：
 
-### GPU与VRAM
-GPU(图形处理器)最初是为图形渲染和游戏设计的,但由于其并行计算能力强大,现在也被广泛用于加速AI模型的推理和训练。
+| 理论精度 | 纯权重理论大小 |
+|---|---:|
+| FP32 | 32GB |
+| FP16/BF16 | 16GB |
+| FP8/INT8 | 8GB |
+| 4-bit | 4GB |
 
-#### GPU性能
+实际文件会更大，因为还有 scale、zero point、embedding、metadata 和未量化层。GGUF 的 `Q4_K_M` 也不是正好 4 bit/parameter，粗略按 4.5～5 bit/parameter 留空间更靠谱。
 
-高端GPU具有数以千计的核心,每个核心可同时执行多个线程,能够高效地并行处理大量的矩阵和向量运算,正是AI模型所需。常见的GPU型号有Nvidia GeForce RTX和AMD Radeon RX系列。目前intel也加入了制作GPU的行业。
+完整内存预算应该是：
 
-此外苹果M系列处理器的集成显卡也很强，能够很好的完成同样的任务。
+```text
+模型权重 + KV cache + 临时 activation / workspace + 推理框架开销 + 操作系统和其他程序
+```
 
-对于Nvidia卡，越新的代速度越快，架构升级的提升还是挺明显的。尤其是RTX 40系，速度提升蛮大的。在40系的RTX卡中会有对半精度FP16的优化，所以速度提升会比较大。打游戏主要FP32精度是很重要，所以30及之前的GPU没有对半精度特别优化。
+我建议不要把 24GB 显存算成 24GB 全都能给权重。至少留出 10%～20%，长上下文和高并发时要留更多。
 
-#### VRAM(显存)
-VRAM是GPU自带的内存,用于存储GPU需要处理的数据和程序指令。与CPU访问主板内存相比,GPU访问VRAM的速度更快。和CPU一样，GPU需要把数据挪到VRAM内才能进行运算。请记住在内存和显存间移动数据也需要花时间。
+训练更夸张：除了权重，还可能需要梯度、optimizer states、master weights 和 activation。Adam 全参数训练的总内存可以是权重推理的很多倍。LoRA/QLoRA、gradient checkpointing、ZeRO/FSDP 能减少占用，但“能推理”完全不等于“能训练”。
 
-大型语言模型通常需要大量VRAM，Vram的占用量和上面的RAM的量类似。
+### MoE：总参数很大，激活参数很小
 
-一块RTX 3090/RTX 4090/Radeon 7900XTX显卡的显存大小是24GB，你可以用它很快的跑一个Q4精度下32B的模型，估计（我哪来这些卡）在15/20/15Token每秒左右。
+Mixture of Experts（MoE）模型会把部分 FFN 层拆成很多“专家”，再用 router 为每个 Token 选择少数几个专家。
 
-一块4060Ti 16GB版有16GB的显存，你可以拿他跑Q4 14B或Q2 32B的模型。Q2精度更低，效果更差但是模型会变小。
+![MoE 工作方式示意图](image-5.png)
 
-大显存是很重要的！
+因此 MoE 有两个参数数字：
 
-**！！！但是！！！** 你可能会说你的显存太小了装不下，不过这也能跑:
+- **总参数（total parameters）**：所有专家加起来，决定权重至少要占多少内存；
+- **激活参数（active parameters）**：一个 Token 实际经过的参数，和单 Token 计算量、理想情况下的权重读取量更相关。
 
-我们可以把LLM分成多个部分拆开分开运算。是的这让它变慢，但是！你可以做的一件事是把LLM的一部分塞进VRAM由GPU运算然后把剩下的部分存在RAM里。
+比如 Qwen3-Next-80B-A3B 是约 80B 总参数、3B 激活；2026 年 8 月发布的 [Qwen3.8-Flash-Next](https://qwen.ai/blog?id=qwen3.8-flash-next) 则是 125B 主模型参数、每 Token 激活 6B，另外还有 51B N-gram embedding。它们需要“大模型级别的容量”，但理想 Decode 工作量更接近一个小得多的密集模型。
 
-所以我也可以拿24GB的4090跑Q3 70B参数的模型（34GB大小左右），尽管24GB还是装不下，但是我内存RAM装得下就行，然后只需要把正在运算的部分挪入VRAM就可以。不过来回挪也要花时间，所以建议你的显存之和不要小于模型的一半，越大越快，越小越慢。
+这也是大容量 LPDDR5X/统一内存机器突然变得很有意思的原因：它们可能有 128GB、256GB 甚至更多容量，带宽没有 HBM 那么夸张，但对于低激活比例的 MoE，单用户交互速度可能仍然很实用。
 
+不过，千万不要把它简化成“MoE 不吃带宽”：
 
-**重要**：因为在推理时每一个参数都要被CPU/GPU读取一边，所以内存和处理器间的带宽就决定了LLM的速度上限。例如，一块RTX 4090的显存带宽是1008GB/s，假设我们要跑一个7B参数的模型，使用FP8精度（1字节/参数），模型大小约为7GB。推理时，GPU需要一次性读取全部参数，那么理论速度上限是1008GB/s ÷ 7GB ≈ 140次/秒，也就是说每秒最多完成140次完整推理（不考虑其他开销）。但实际中，会有额外的计算和调度开销，所以真实速度会更低。相比之下，苹果M4 Max的统一内存带宽约400GB/s。这就是为什么显存带宽高的GPU跑LLM更快，而普通DDR5内存（比如双通道5600MT/s，带宽约90GB/s）用CPU跑会慢很多，理论上限更低。
+- attention、shared expert 和其他 dense 层仍然要算；
+- router 的不规则访问会降低实际效率；
+- 不同 Token 选不同专家，高 batch 时可能同时触碰很多专家；
+- 专家分布在多张卡上时会产生 all-to-all 通信；
+- 如果专家权重必须每层从普通 RAM 通过 PCIe 搬进显存，那 PCIe 会把速度打回原形。
 
-#### 多显卡运算
-同样的，正如你可以把模型切到内存和显存里，你也可以使用多张显卡，然后把模型切到很多个显卡里。这样你可以用4*4060ti 16GB来组合成64GB显存，然后你就可以只用1600美元左右的显卡来跑一个110B的大大模型。
+MoE 的优势要靠 fused MoE kernel、expert parallel、负载均衡和高速互联才能充分发挥。总参数、激活参数、batch size 和运行时支持必须一起看。
 
-不过切分模型确实会降低速度是了，不过单个最便宜的48GBNvida卡我找到的是一个Quadro RTX 8000也要2400美元左右还是二手的。
+---
 
-对于多GPU配置你可以考虑组合多张卡，例如我在已经有4090的情况下未来可能会考虑加两张16GB的RTX5060（如果未来有的话）来组成一个便宜的56GB内存。这样我可以运行Q3的110B模型或者Q5的72B模型。
+## 第三部分：精度与量化
 
-此外还有一些阴间操作，我不推荐，但是你觉得你行那也可以试试。
+### 浮点数和整数到底差在哪？
 
-Nvidia有很多老服务器卡会有很大的内存但是很便宜。你可以去搜索Nvidia P40或者K80（这辆都是24GB显存的老卡）。然后你就能看见一堆150美元一张的没风扇的二手服务器卡，你需要使用电源转接头和3D打印来改装一个风扇上去，还有调主板设置之类的。
+精度不是“数字越小模型就等比例变笨”。它同时影响权重文件大小、内存流量、硬件加速和最终模型质量。
 
-我说着都嫌麻烦。不过你愿意折腾可以试试。主要是这个价格真的很便宜，而且我保证再老的显卡也比CPU快。
+| 格式 | 典型用途 | 特点 |
+|---|---|---|
+| FP32 | 科学计算、部分累加和 master weight | 稳，但大且慢 |
+| TF32 | NVIDIA Tensor Core 上加速“FP32 风格”训练 | 范围像 FP32，尾数精度更低 |
+| FP16 | 训练、推理 | 精度较好，但数值范围比 BF16 小 |
+| BF16 | 训练首选之一、推理 | 和 FP32 一样的 exponent 宽度，更不容易溢出 |
+| FP8 | Hopper/Ada/CDNA3 以后训练与推理 | E4M3 与 E5M2 在精度和范围间取舍 |
+| INT4 / GGUF Q4 | 消费级本地推理常见 | 多为 weight-only，省容量和带宽 |
+| MXFP4 | OCP 标准微缩放 FP4 | 32 个 E2M1 值共享一个 E8M0 scale |
+| NVFP4 | NVIDIA 的 FP4 recipe | 16 个 E2M1 值共享 E4M3 scale，另有全 tensor FP32 scale |
 
-另外当GPU多于三个的时候你需要考虑更多更复杂的东西，例如你的电源PSU，你的PCIE Lane数量，你的机箱大小。你可以考虑使用AMD ThreadRipper或者Intel Xeon CPU（很贵）与其配套的主板来解决之类的问题。像我如果要使用三卡配置的话，那么我的计划是买一个有三个PCIE接口的主板然后直接把三张卡用延展线塞到我的ATX机箱里。
+关键提醒：**“权重以 4 bit 保存”不等于“GPU 用原生 FP4 做矩阵乘法”。**
 
-#### 显存带宽
-指VRAM与GPU之间数据传输的速率,也决定了GPU的整体性能。较新的GPU使用更快的显存(如GDDR6X)以提高带宽。
+很多旧 GPU 会把 4-bit 权重读进来，在寄存器或 shared memory 中反量化成 FP16/BF16，再做 W4A16 运算。这样仍然能省显存和带宽，但不等于获得原生 FP4 Tensor Core 的计算吞吐。
 
-#### GPU优化
-制造商通过优化的软件库(如Nvidia的TensorRT)和硬件设计(如Tensor Core),进一步提升GPU在AI推理的性能。
+### FP4 为什么必须缩放？
 
-Nvidia的GPU优化是做的最好的。当你使用的是最新的的RTX 30/40系时（这也包含其他Ada Lovelace / Ampere架构的卡，例如RTX A5000）你可以使用一部分新的功能进一步提升你的速度，所以我的建议是买新不买旧。
+FP4 E2M1 只有 1 个 sign bit、2 个 exponent bit 和 1 个 mantissa bit。它能表达的非负数大致只有：
 
-### 推理时候的过程
+```text
+0, 0.5, 1, 1.5, 2, 3, 4, 6
+```
 
-纯CPU或GPU推理：
+如果一组真实权重从 0.001 到 200，直接塞进去不是都变成 0，就是大的全部溢出。
 
-CPU -> RAM
+所以低精度量化不是简单“砍掉小数位”，而是先找一个 scale，把一组数缩放进 FP4 能表示的范围：
 
-或者
+```text
+量化：q = round_to_fp4(x / scale)
+还原：x_hat = q × scale
+```
 
-GPU -> VRAM
+一整个 tensor 只用一个 scale 很省事，但某个离群值可能把 scale 拉得很大，让其余小数全挤在 0 附近。解决方法就是 block scaling：每一小块数各用自己的 scale。
 
-所以这里带宽很重要。
+block 越小，越能适应局部数值范围，通常误差越低；但 scale 本身也占空间，计算和内存布局也更复杂。
 
-使用部分载入VRAM推理：
+### MXFP4 与 NVFP4
 
-RAM -> VRAM;
+两者的元素主体都是 E2M1 FP4，区别主要在缩放方法。
 
-GPU -> VRAM
+OCP [Microscaling Formats (MX) 规范](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf)规定 MXFP4：
 
-这个来回挪模型就会慢很多。
+- 每 32 个 E2M1 元素共享一个 scale；
+- scale 使用 E8M0；
+- E8M0 基本上只能表示 2 的幂，所以 scale 很紧凑、硬件也容易处理，但刻度比较粗。
 
-### 内存与显存占用
+```text
+x ≈ fp4_value × block_scale_E8M0
+```
 
-我在上面有给过一个内存模型大小的对照表，但是实际情况复杂不少，这里展开讲讲。
+NVIDIA 的 [NVFP4](https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/features/low_precision_training/nvfp4/nvfp4.html) 使用两级缩放：
 
-以1B参数的模型为例子。一个字节是1 Byte，1GB = 10 ^ 9 Byte。
-- 参数精度:一般来说,参数使用32位浮点数(FP32)存储。每个FP32参数占用4个字节。
-- 参数个数:1B参数=1,000,000,000个参数。
-- 附加内存开销:除了存储参数本身,运行模型还需要额外的内存用于中间计算、缓存等。在推理中没有Optimizer这个东西所以这个不用太担心，比较小。
-- 如果你跑的是长context（下面会讲），模型也会变大。更短的context length会少量的减少内存占用。
+- 每 16 个 E2M1 元素共享一个 FP8 E4M3 block scale；
+- 整个 tensor 再共享一个 FP32 global scale。
 
-假设使用FP32精度,1B参数模型在32位系统上的总内存占用计算如下:
-参数本身: 1,000,000,000 * 4 Byte = 4,000,000,000 Byte = 4 GB
-附加内存: 差不多0.3GB
-总内存占用: 4 GB
+```text
+x ≈ fp4_value × block_scale_E4M3 × global_scale_FP32
+```
 
-但是如果这样的话4090连7B都跑不了啦~ 
+E4M3 scale 不必只能取 2 的幂，加上 block 更小，因此通常能比 MXFP4 更细地贴合局部数据，量化误差也更小；代价是 recipe 和 scale 管理更复杂。
 
-(-_-)!
+NVIDIA 在权重训练中还会使用二维 16×16 scaling、随机 Hadamard Transform、stochastic rounding 等方法控制离群值和训练误差。这里最重要的结论不是背公式，而是：**FP4 能好用，靠的是数据格式、缩放策略、量化校准和硬件 kernel 一起工作。**
 
-所以有了各种各样的降低精度来减小内存的方法。
+### 不同 GPU 架构支持什么精度？
 
+下面是面向 LLM 用户的简化表。具体型号和软件栈仍然可能有差异：
 
-### FP16与Quantization
+| 硬件架构 | 适合关注的原生低精度能力 | 对本地 LLM 的含义 |
+|---|---|---|
+| NVIDIA Turing（RTX 20/T4） | FP16、INT8、INT4 Tensor Core | 适合 INT4/INT8 或 FP16；没有 BF16/FP8 原生矩阵优势 |
+| NVIDIA Ampere（RTX 30/A100） | FP16、BF16、TF32、INT8、INT4 | BF16/FP16 很成熟；没有原生 FP8/FP4 |
+| NVIDIA Ada（RTX 40/L4/L40） | 增加 FP8 Tensor Core | FP8 可有计算优势；FP4 通常仍是 weight-only 路线 |
+| NVIDIA Hopper（H100/H200） | FP8、BF16、FP16、TF32、INT8 | FP8 是甜点位；**没有原生 FP4 Tensor Core** |
+| NVIDIA Blackwell（B100/B200、RTX 50/RTX PRO Blackwell、GB10） | FP4/FP6/FP8、BF16/FP16 等 | NVFP4/MXFP4 才能获得原生 4-bit 矩阵加速 |
+| AMD CDNA2（MI200） | FP16、BF16、INT8 等 | 训练/推理以 16-bit 和整数为主 |
+| AMD CDNA3（MI300/MI325） | 增加 FP8/BF8 | FP8 成为重要选择；无 CDNA4 的原生 MXFP4 |
+| AMD CDNA4（MI350/MI355） | MXFP4、MXFP6、MXFP8、OCP FP8 | 原生支持标准 microscaling 低精度 |
+| Apple Silicon / AMD RDNA 核显 | 依赖 Metal/MLX、Vulkan/HIP 等优化 kernel | 4-bit 多数表示权重存储与 weight-only 推理，不要套用 NVIDIA 峰值表 |
 
-#### 半精度(FP16):
+资料可参考 NVIDIA 的 [Ampere](https://www.nvidia.com/en-us/data-center/ampere-architecture/)、[Hopper](https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/) 与 [Blackwell NVFP4](https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/) 说明，以及 AMD 的 [CDNA 架构页面](https://www.amd.com/en/technologies/cdna.html)。
 
-- FP16，和FP32类似，是一种浮点数据类型,使用16位来存储数值,而常规精度(FP32)使用32位。
-- 使用FP16可以将模型的内存需求减少一半,从而允许在相同的GPU内存下加载更大的模型。
-- 一些GPU有专门的Tensor Core来加速FP16计算,可以大幅提高推理和微调的速度。
-- 但是FP16精度较低,对某些任务可能会导致数值不稳定或精度损失。
-  
-#### FP8:
-- FP8是一种8位浮点格式，比FP16更节省空间，每个参数只占1字节。内存占用能再砍一半，比如一个7B模型从FP16的14GB降到FP8的7GB，非常适合显存小的设备。Nvidia的Hopper架构（像H100）对FP8有专门优化，推理速度能翻倍。但缺点是精度更低，可能丢掉一些细节，比如复杂数学推理任务可能会出错。
-- 但是在2025年的今天几乎可以做到使用FP8几乎无损的推理。所以8位就8位吧，挺好的。
+特别回答一个常见问题：**H100 上要不要下载 NVFP4 模型？**
 
-#### BF16 (Brain Float 16):
-- BF16是另一种16位浮点格式，和FP16一样占2字节，但它保留了更大的数值范围，牺牲了一点小数精度。Google的TPU和Nvidia的A100都支持BF16，特别适合训练大模型时防止数值溢出。推理时，比如跑LLaMa3 70B，BF16和FP16的内存占用都是140GB，速度差不多，但BF16在处理超长上下文时更稳定，不容易“忘词”。不过对老GPU支持不太好，在20系级之前的Nvidia卡是不支持BF16的。
+H100 可以通过软件 kernel 读取 NVFP4 权重，但它没有原生 FP4 Tensor Core。常见兼容路径是在 kernel 内把 FP4 权重反量化到 BF16/FP16，做 W4A16；某些路径也可能转换到其他受支持精度。因此它可能节省显存和带宽，但不应期待 Blackwell 的原生 FP4 算力优势，甚至可能比一个优秀的 FP8 checkpoint 更慢。NVIDIA NIM 也明确把 pre-Blackwell 的 NVFP4 路径称为 emulation，并提示它可能慢于同卡原生精度。
 
-#### 量化(Quantization):
+所以：H100 优先比较模型官方 FP8 与 BF16；Blackwell 才优先考虑经过验证的 NVFP4/MXFP4。
 
-- 量化是将原始的FP32权重映射到较低比特宽度的定点数表示,例如INT8。
-- 这可以进一步减少模型大小和内存需求,但代价是精度损失。
-- 常见的量化有Q8,Q5,Q4,Q3,Q2，下面是一张模型性能和占用内存大小随着量化的变化图。
+### 训练和推理应该选什么精度？
 
-来自[Github](https://github.com/ggerganov/llama.cpp/pull/1684)
+| 场景 | 常见甜点位 | 为什么 |
+|---|---|---|
+| 从零预训练，优先稳定 | BF16 + FP32 累加/optimizer state | 数值范围好，生态成熟 |
+| Hopper/Ada/CDNA3 大规模训练 | 经过验证的 FP8 mixed precision | 省内存和计算，但要用动态/块缩放 recipe |
+| Blackwell/CDNA4 大规模训练 | NVFP4 或 MXFP4 mixed precision（需严格验证） | 可能进一步提高吞吐，但不是所有层都适合 4-bit |
+| LoRA/QLoRA 微调 | 4-bit frozen base + BF16/FP16 compute + 16-bit adapter | 大幅减小显存，训练参数仍保留较高精度 |
+| 消费级单用户推理 | GGUF Q4_K_M/Q5_K_M 或 AWQ/GPTQ INT4 | 通常是容量、质量和带宽的好平衡 |
+| Hopper 生产推理 | FP8 或成熟的 INT4 weight-only | 看模型、batch 和 kernel 实测 |
+| Blackwell 生产推理 | 经过模型评测的 NVFP4/MXFP4/FP8 | 原生低精度有明显潜力 |
+| KV cache | BF16/FP16 最稳；FP8/INT8 更省；FP4 更激进 | KV 精度影响长上下文和并发，需要单独评测 |
 
-K Quantization vs Perplexity
-![alt text](image.png)
+对聊天模型，我一般建议从 Q4/Q5 开始。Q2/Q3 不是不能用，但数学、代码、工具调用、长上下文和小模型更容易掉质量。不要再用一句“更大的 Q2 一定强于更小的 Q5”当定律，必须拿你的实际任务测。
 
-左边的Perplexity可以理解为模型表现（其实不完全是），下面的model size是内存大小。
+对于训练，也别以为把所有 tensor 统统设成最低精度就结束了。现代 mixed-precision recipe 会给敏感层、累加、梯度和 optimizer state 保留更高精度。理论 FP4 FLOPS 只是上限，量化和缩放也有开销；矩阵太小或 batch 太小照样吃不满。
 
-我们可以看出，相比FP16，Q5678的性能损失都很小，然后Q2和Q1就直接蠢晕。
+### GGUF、GPTQ、AWQ、FP8 又是什么？
 
-**所以我推荐你使用Q5或者Q4，实在不行用Q2，别用Q1**
+- **Safetensors**：安全、常见的权重文件容器，本身不说明量化方法；
+- **GGUF**：llama.cpp 生态的模型与 metadata 容器，常见 Q4_K_M、Q5_K_M、IQ4 等量化；
+- **GPTQ**：经典的 post-training weight-only 量化方法/生态；
+- **AWQ**：利用 activation-aware 信息保护重要权重的 weight-only 量化；
+- **bitsandbytes NF4**：QLoRA 中常见的 4-bit 格式；
+- **FP8/NVFP4 checkpoint**：通常需要相应框架、scale 布局和硬件 kernel；
+- **EXL2**：ExLlama 生态的可变 bit 量化格式。
 
-另外，越大的模型65B，对抗低精度带来的性能损失就越强。所以就算是30B的Q2也强于14B的Q5。具体的根据使用的要求取舍就好。
+一个模型“有 4-bit 版”还不够，你要确认运行时能否加载、硬件有没有高效 kernel、是 W4A16 还是 W4A4、KV cache 精度，以及量化作者是否做过可信的质量评测。
 
-量化模型大小表（我自己估的）单位：GB
+---
 
-| -   | 7B  | 14B | 32B | 65B | 110B|
-|-----|-----|-----|-----|-----|-----|
-|  Q2 |  3  | 6.0 | 14.0| 28.0|31.0 |
-|  Q3 |  4  | 7.0 | 16.0| 33.1|45.0 |
-|  Q4 |  5  | 8.0 | 20.5| 40.0|58.0 |
-|  Q5 |  6  | 9.5 | 25.1| 48.0|70.0 |
+## 第四部分：如何为 LLM 配一台电脑
 
-（笑死，我还写了小数假装自己很专业）
+### 先问自己四个问题
 
-### Finetune
-对于上面的所有内存要求都有一个关键的前提，那就是模型实在推理状态下运行的。
+1. 我要跑多大的模型，密集还是 MoE？
+2. 我要多长上下文，同时几个人用？
+3. 我更在意单对话速度，还是总吞吐？
+4. 我要推理、LoRA 微调，还是从零训练？
 
-什么是推理状态呢？它相对的就是训练状态。当推理时，电脑内存中只需要存储模型参数就可以了，但是训练时还需要模型参数的导数Gradient。
+然后再做内存预算。不要反过来先买卡，再祈祷模型正好能塞进去。
 
-举个例子，对于一个神经网络，输入为一个长度为2的向量x1,x2，有两个参数w1,w2。神经网络的输出为y = x1\*w1+x2\*w2,当推理是只需要存储这四个数就行，但是如果训练中就需要计算x1与x2对loss的偏导。
+### 独立显卡路线
 
-所以你能推理一个模型不代表你可以训练一个模型。当然了，训练模型也有训练时减小内存占用的方法，例如Lora，不过这个不是我这篇文章的重点。如果有兴趣的话我回头可以讲讲。
+NVIDIA 最大的优势不是纸面参数，而是 CUDA 生态：vLLM、TensorRT-LLM、FlashAttention、量化 kernel 和新模型支持通常最省心。
 
-### 上下文Context
+挑卡时大致按这个顺序：
 
-每一个LLM都有固定的最大上下文长度，这个通常可以在公司们的技术报告里找到。这个长度在训练时就确定了，一个模型只能接收小于短于该长度的输入。这个长度以Token（一种通过聚合多个UTF8编码形成的压缩后文本，下面会讲）来计算。
+1. 显存容量能不能装下目标权重和 KV cache；
+2. 显存带宽；
+3. 该架构是否原生支持你要用的精度；
+4. 软件栈是否支持；
+5. 功耗、散热、价格和保修。
 
+一张旧的 24GB RTX 3090 可能比新的 16GB 卡更适合 20GB 模型，因为前者能全放进显存。反过来，如果两张卡都放得下，小模型的 prefill、高 batch 和新精度 kernel 往往是新架构更强。
 
-#### Recall accuracy
-对于Context以内的内容，LLM也不一定能够很好的定位信息。当输入较长例如8K的长文本是有的时候LLM会遗忘很长之前的信息。
+显存不够时可以 CPU offload，但独显通过 PCIe 反复读取系统内存会很慢。它适合“我偶尔等一等也要跑起来”，不适合“这就等于拥有了 128GB 显存”。
 
-对于测试LLM寻找长文本中信息能力的一种方法就是计算Recall Accuracy。
+不要把魔改 48GB 游戏卡当普通消费品推荐：焊接、BIOS、散热、驱动、保修和稳定性都有额外风险。如果你依赖它工作，请把失败成本算进去。
 
-例如在来自Claude报告的下图中我们可以看到Claude对于定位80K Token之前的内容就会容易丢信息。所以如果你需要自己的LLM保持高准确率的话我不建议太长的输入。
+AMD 独显和 Instinct 在 ROCm、vLLM、SGLang、llama.cpp 上进步很快，尤其 MI300/MI350 的容量和带宽很有吸引力。但购买前务必按具体 GPU、操作系统、模型架构和 quant kernel 查支持矩阵，不要只看“支持 ROCm”四个字。
 
-![Claude recall accuracy](image-1.png)
+### 大容量统一内存路线
 
-## 如何为LLM配置一台电脑
+统一内存的优势是 CPU 和 GPU 共用一大池内存，不必把整个模型塞进传统独显 VRAM，也避免了频繁 PCIe offload。它特别适合很大但激活参数较少的 MoE、单用户或低并发本地推理，以及需要安静、低功耗和大容量的工作站。
 
-在回答这个问题前，你需要明确：
+截至 2026-08-30，值得看的几类机器：
 
-- 我的预算是什么？
-- 我的需求是什么？
+| 平台 | 内存与带宽 | 适合什么 | 需要注意 |
+|---|---|---|---|
+| Apple M5 Ultra Mac Studio | 最高 512GB unified memory，1.2TB/s | 超大模型本地推理、MLX、安静工作站 | 2026-08-25 刚发布，9 月开始供货；CUDA-only 工具不能直接用 |
+| Apple M5 Max | 最高 128GB，最高 614GB/s | 便携/桌面单用户，中大型量化模型 | 软件主要走 MLX/Metal/llama.cpp |
+| NVIDIA DGX Spark（GB10） | 128GB coherent LPDDR5X，273GB/s | CUDA/Blackwell 开发、FP4、约 200B 以内模型实验 | 带宽远低于 HBM 卡；“1 PFLOP FP4”包含特定精度/稀疏条件 |
+| AMD Strix Halo / Ryzen AI Max+ 395 | 最高 128GB LPDDR5X，256GB/s | 性价比大内存 Windows/Linux 机器、llama.cpp/ROCm | RDNA 3.5 不是 CDNA4，别把 MI350 的原生 MXFP4 能力套过来 |
+| Intel Crescent Island | 最高 480GB LPDDR5X，350W PCIe 卡 | 未来的大容量数据中心推理 | 仍是面向客户采样/生态建设的产品，不等于现在能买到的家用卡 |
 
-对于你的需求，指的是你要跑什么表现的模型，并且需要达到多快。请记住，***VRAM是很重要的***。
+官方规格来源：[Apple M5 Ultra](https://www.apple.com/newsroom/2026/08/apple-introduces-new-mac-studio-with-m5-max-and-m5-ultra/)、[DGX Spark](https://www.nvidia.com/en-us/products/workstations/dgx-spark/)、[Ryzen AI Halo](https://www.amd.com/en/products/processors/desktops/ryzen/ryzen-ai-halo/ryzen-ai-max-plus-395.html)、[Intel Crescent Island](https://newsroom.intel.com/client-computing/intel-outlines-architectures-for-agentic-ai-at-hot-chips-2026)。
 
-如果你要跑一个20GB大小的34B参数的模型那么24GB的RTX 3090会比16GB的RTX 4080快得多，因为3090能装下模型更多的部分，尽管它俩在价格上是类似的。
+这里顺便更正一个容易记混的名字：能查到 Intel 官方资料的是 **Crescent Island**，不是 Crescent Lake。
 
-便宜的大Vram GPU有RTX 4060ti 16GB和RTX 3060 12GB，你可以通过组合多块这些卡来获得比较便宜的大 VRAM。
+以 Qwen3-Next-80B-A3B 这类超稀疏 MoE 为例，Q4 权重加运行时可能落在几十 GB，128GB 统一内存机器有空间容纳权重和较长 KV cache；每 Token 激活参数又比较少，所以 Decode 可能达到实用速度。这是合理的购买逻辑。
 
-如果你够有钱的话直接四块4090+ThreadRipper Pro CPU。或者来一块A100 80G之类的。另外RTX 6000 Ada也是有48GB显存的好选择。
+但如果你要同时服务 100 人，专家并行、高 batch prefill、总吞吐和生态可能会让多张数据中心 GPU 更合适。统一内存不是“便宜 H100”，而是另一种取舍。
 
-你还可以购买魔改的4090，把显存从24GB升级到48GB，这样单卡就能跑Q4 70B模型，速度还快。
+### 多显卡与多机
 
-苹果M系列芯片也在升级，比如M4 Max有高达141GB/s的内存带宽和128GB统一内存，跑110B模型都不虚，M3 Ultra（最高512GB内存）还更猛。
+多卡能解决容量问题，但不会自动线性加速。
 
-AMD的新APU也不错，像Strix Halo（395/390/385），配256-bit定制内存IO，带宽能到独显级，加上超大内存和很强的iGPU，能轻松跑70B模型。Nvidia的DIGITS系列也是这样的，值得关注。
+- **Tensor Parallel（TP）**：一层矩阵分到多卡，每层都要通信；
+- **Pipeline Parallel（PP）**：不同层放不同卡，容易产生 pipeline bubble；
+- **Expert Parallel（EP）**：MoE 的专家分到不同卡，需要 all-to-all；
+- **Data Parallel（DP）**：每组卡复制一份模型，服务不同请求，适合提升吞吐。
 
-如果想多机互联，可以用万兆网线+交换机，或者雷电5（只有较新的苹果支持）（80Gbps），把几台机器连起来分布式推理，比如4台M3 Ultra就能搞定8位下的Deepseek V3/R1
+两张卡的总显存可以装更大模型，但如果只通过普通 PCIe 互联，单用户 latency 可能变差。NVLink/Infinity Fabric 对高频通信非常重要。
 
-### 便携性
-如果你需要便携性，例如想要一个笔记本之类的：
+多机更要小心：10GbE 理论只有约 1.25GB/s，和显存内部数百 GB/s、数 TB/s 完全不是一个量级。它可以用于 pipeline、请求级分流或特定 offload，但别期待四台普通电脑通过交换机就自然变成一台四 GPU 服务器。
 
-对于普通的1000美元左右的预算，我推荐你购买具有16GB VRAM的Nvidia GPU游戏本。
+Thunderbolt 5、RDMA 和高速 NIC 能改善互联；Apple 新款 Mac Studio 也支持通过 Thunderbolt 5/RDMA 组集群。但软件支持、切分方式和通信模式决定最终效果，绝不能只把四台机器的内存和带宽数字相加。
 
-如果你很有钱，我推荐你购买3500USD或者25000RMB价格左右的128GB内存的MacBook Pro。（RICH！）
+---
 
-苹果的M系列芯片由于其独特的内存和架构设计可以很快的推理LLM。如果你有96GB的内存的话你完全可以从中分出72GB的VRAM来运算LLM。这样你就可以轻松跑70B和110B的模型。
+## 第五部分：如何选择模型
 
+### 不要只看一个排行榜
 
-## 选择你要用的模型
+选择模型至少要同时看：任务、dense/MoE、thinking/instruct、总参数与激活参数、context、tokenizer、运行时支持、量化、许可证，以及你的硬件上的 TTFT、token/s、并发和功耗。
 
-模型怎么选？虽然模型每个都不一样并且有自己的优缺点，但是还是有很多方法能够帮助各位选择最适合自己使用例的模型。
+排行榜提供候选名单，不替你做最终决定。公开 benchmark 可能被训练数据污染，也可能和你的任务完全不同。
 
-请在选择模型的时候一定要考虑到下面几个点：
+最靠谱的办法还是自己做一个小 eval：收集 30～200 个真正代表你工作的问题，写清楚判分规则，把候选模型都跑一遍。对于代码就跑测试；对于抽取就比 JSON；对于客服就让真实使用者盲评。
 
-- 每个模型都有训练和优化的任务方向，例如现在（2024/06）最棒的三个开源大模型（不包括200B+的Nemotron和Grok之类的）分别为Command R+， Qwen2 72B，和LLaMa 3 70B。这三个中LLama3是几乎没有多语言能力的，但是你如果用英语跟它聊天的话它真的超有趣的！CR+则被针对RAG和Function Calling专门优化过，他的多语言能力也不错，但是他的数学能力和写代码能力比较弱。Qwen2 72B是最新的模型，此外他的中文也最好。
+### Artificial Analysis
 
-- 结果是，每个模型都有自己在微调时被优化的方向。这点区别还是能有很大的。我建议各位为了自己的需求选择一个合适的模型。
+[Artificial Analysis](https://artificialanalysis.ai/models/) 是现在很有用的模型比较网站。它不只给一个 Intelligence Index，还把模型能力、首 Token 延迟、输出速度、缓存价格、reasoning token 使用量和每任务真实成本放在一起。
 
-- 此外，你也不一定非要使用最好的模型，很多时候够用就行。例如我的小小笔记本只有AMD Ryzen 5 7640U CPU和32GB 内存，我如果选择7B的Qwen2 7B或LLama3 7B的话速度就能到达很不错的9token/s，现在的小模型已经做的很不错了，说起话来人模人样的，所以我也不需要去装个又大又慢的大模型。用什么模型取决于你的任务。
+它的 [methodology](https://artificialanalysis.ai/methodology) 也值得读。尤其重要的是，它区分“每百万 Token 的标价”和“完成一件事花多少钱”。
 
-- 而且很多时候你压根没有合适的硬件来运行这些大模型，看看你手头有什么显卡，有多少钱，再综合考虑最适合的模型。
+但是 Artificial Analysis Index 仍然是多个 benchmark 的加权组合。权重由网站定义，不是由你的业务定义。所以我建议：用它筛选候选，再用自己的 eval 决赛。
 
-选择模型有下面几个可以考虑的方向：
+LMArena 的人类盲选榜也有参考价值，但更偏人类偏好，容易奖励好看、详细、讨喜的回答。技术报告则最适合确认架构、context、训练方法和许可证。三种资料互相补。
 
-### Hugging face demos
+### Reasoning、RLVR 与真实成本
 
-很多时候开源模型都会在huggingface上放一个可以免费使用的webchat，你在网上搜应该就搜索得到。你可以通过试用这些来看看模型的效果。很多时候还挺有用的。
+现在已经是 reasoning model 的时代了。
 
-例如下面两个：[Qwen2-72B](https://huggingface.co/spaces/Qwen/Qwen2-72B-Instruct)
-[Command-R+](https://huggingface.co/spaces/CohereForAI/c4ai-command-r-plus)
+很多模型通过 reinforcement learning 学会在回答前进行更长的推理。RLVR（Reinforcement Learning with Verifiable Rewards）会对数学答案、代码测试、格式约束等可以自动验证的结果给奖励。DeepSeek-R1 等工作证明了这种训练能显著强化数学和代码推理；OpenAI 也公开说明 reasoning 能力会随训练时 RL compute 和测试时 thinking compute 增长。
 
-### 技术报告
+这里有一个非常容易被价格表骗到的地方：
 
-几乎每个模型发布的时候都会发布一篇自己的技术报告，讲讲模型哪里好，多少钱，在测试上的表现有多少分还有和现有的模型比起来怎么样。
+> 一个输出价格 $1 / 1M token 的模型，不一定真的只有 $10 / 1M token 模型的十分之一成本。
 
-例如这个：[你好，Qwen2](https://qwenlm.github.io/zh/blog/qwen2/)
+原因是前者可能为了得到同样正确率，生成十几倍甚至几十倍的 reasoning trajectory。
 
-这个报告指出了模型的上下文长度，支持的语言，和评测表现之类的。
+真实成本大致应该按任务算：
 
-还有别忘了*模型的许可证*！！！！
+```text
+任务成本 = 非缓存输入 Token × 输入价
+         + 缓存输入 Token × 缓存价
+         +（reasoning Token + 可见答案 Token）× 输出价
+```
 
-如果你要商用的话别忘了好好看看许可证，像CC-BY-NC就禁止你使用模型去赚钱之类的，如果你自己玩或研究都无所谓，但你要不跟Cohere AI去写Command R+的使用申请还拿去例如做你的网上小应用赚钱就容易吃律师函。
+自部署虽然没有 API 账单，但 reasoning 也绝不是免费：更长的 trajectory 意味着更长 latency、更多 GPU 时间、更多电和更低的同时并发数。
 
-如果一个模型使用的时Apache 2.0或MIT你就应该可以拿去商用，不过请务必看仔细！
+因此比较 reasoning 模型时至少记录任务成功率、平均 reasoning + answer tokens、end-to-end latency、每个成功任务的成本，以及不同 reasoning effort 下的能力曲线。
 
-### Benchmark和ranking
+“More reasoning, smarter model”经常成立，但不是永远成立。模型也会 overthink、绕圈和浪费 Token。简单抽取、翻译、分类任务通常不需要最高 reasoning effort。
 
-很多benchmark都能够提供重要的关于模型表现的信息，例如下面经典的MMLU，他的全名是Multi-task Language Understanding，测试的是模型对各种语言任务的理解能力。还有很多别的benchmark评测不同的方向，例如代码能力和数学能力之类的。
+### 模型许可证
 
-[MMLU](https://paperswithcode.com/sota/multi-task-language-understanding-on-mmlu)
+“权重能下载”不等于“开源”，更不等于“可以随便商用”。
 
-benchmark也有很多问题，例如使用公开数据集的话就可以作弊，可以主动的或者不小心的让数据集的知识进入你的训练数据使得你的模型的纸面表现更好。以及设计一个合成数据集，包含大量的类似于benchmark问题的模拟题，最后模型便会在者的跑分上更好。
+检查商业用途、用户规模限制、attribution、蒸馏/再分发、地区与用途限制，以及训练数据、代码和权重是否使用不同许可证。
 
-所以我想说的是MMLU分数更高也不一定代表模型绝对更聪明。具体你还得用了才知道。
+Apache-2.0、MIT 通常比较宽松，但仍然要阅读原文；自定义 community license 不能只看别人一句“差不多开源”。正式商业产品请让懂法律的人确认。
 
-其实现在MMLU自从GPT4被发布之后就已经很难进步了，现在御三家GPT4-o, Claude 3.5 sonnet, Gemini 1.5 Pro都能够干到90分。
+---
 
-2025注：现在有很多的新benchmark，其实意义有，但不大。你应该为自己的任务设计自己的benchmark，自己测试每个可以选择的模型效果。
+## 第六部分：部署方法
 
-#### LMSYS Chatbot Arena
-这个真的是超级有用的网站，你玩了就知道了。
+### 路线 A：LM Studio
 
-[Chatbot Arena](https://lmarena.ai/?leaderboard)
+[LM Studio](https://lmstudio.ai/) 适合第一次部署的人：搜索模型、下载 GGUF、调整上下文、聊天和启动本地 OpenAI-compatible API 都有图形界面。
 
-这个相当于是一个竞技场类型的chat网站，用户对两个模型的输出进行盲测，然后选择自己认为输出的更好的那个，你可以看看它提供的leaderboard榜单，很能表现模型在各个方面的实力表现。这个榜单提供了在各种语言，和代码，长文本等任务上的表现排行，对我选择模型还是很有帮助的。
+基本流程：安装后在 Discover 搜索模型，先选 Q4_K_M 或 Q5_K_M；context 先设 4K/8K；确认 GPU offload；运行正常后再逐渐增加 context。
 
-另外如同benchmark，虽然arena是由人类评判，但是分高也不一定绝对好。人类的喜好也是可以特别针对优化的。
+优点是直观；缺点是自动配置不一定是最快配置，高并发服务也不是它的主要定位。
 
-![Arena Leaderboard](image-4.png)
-### 常用模型推荐
+### 路线 B：Ollama
 
-其实模型一直都在进步，然后常用模型也一直在变。我现在在2024/06列一个推荐表，不过可能过不了俩月就得变了。
+[Ollama](https://ollama.com/) 把模型下载、运行和本地 API 包装得很简单。
 
-2025注：其实模型每三个月就要迭代一下，每个参数量下的模型质量都在不断变好。
+```bash
+ollama run qwen3:8b
+ollama list
+```
 
+它默认提供本地 HTTP API，也很容易连接 Open WebUI、编辑器插件和自己的程序。
 
-太老了，看着意思意思就行：
-|参数量|模型名称|
-|-----|-----|
-|  3B |  phi3-mini  |
-|  7B |  LLaMa3-7B  |
-|  7B |  Qwen2-7B  |
-|  9B |  ChatGLM4-9B  |
-| 32B |  Yi1.5-32B |
-|70B|LLaMa3-70B|
-|72B|Qwen2-72B|
-|104B|Command-R+|
+优点是简单、跨平台、生态大；缺点是底层高级参数和新模型特性的暴露可能晚于直接使用 llama.cpp/vLLM。模型标签对应什么量化一定要看清楚。
 
-此外还有MOE Mixture of Experts模型，它们更复杂，更吃内存，但是也速度更快。
+### 路线 C：llama.cpp
 
-### MOE 模型
+[llama.cpp](https://github.com/ggml-org/llama.cpp) 是本地推理生态的地基之一。它支持 CPU、CUDA、Metal、Vulkan、HIP 等多种后端，GGUF 格式也非常普及。
 
-- Google的研究发现Mixture of Experts (MoE) 作为一种高效的模型架构，它通过让大型语言模型（LLM）通过稀疏激活专家子网络来扩展参数规模，而不显著增加计算成本，即，只计算一部分任务相关的参数，不计算不被激活的专家的参数。
-- MoE 模型在推理时每 token 的内存带宽需求可能低于密集模型，因为只访问部分参数，但总内存需求较高。即，我有一个671B的Deepseek v3，激活30B，那么我需要拿内存存储671B的参数但是GPU最后只访问激活的30B。
-- 很可能 MoE 的不规则内存访问模式可能影响效率，具体取决于硬件对稀疏访问的支持。这也是为什么Deepseek花了大量的努力在优化训练和推理算法上。
+```bash
+llama-server -hf Qwen/Qwen3-8B-GGUF:Q4_K_M \
+  -ngl 99 \
+  -c 8192 \
+  --port 8080
+```
 
-### MoE 如何与内存带宽相关？
-内存带宽是数据在内存和处理器之间传输的速度。在 MoE 模型中，每 token 只需访问选定专家的参数，而不是整个模型的参数，因此每 token 的内存带宽需求可能较低。这可能导致推理速度更快，尤其是在硬件能高效处理稀疏访问模式的情况下，例如Nvidia的Nvlink显著提高多卡间的通信速度。然而，总内存需求与密集模型相当，因为所有参数仍需加载到内存中。此外，MoE 的不规则访问模式可能影响实际效率，需要计算的专门优化。
+Windows 下可执行文件可能叫 `llama-server.exe`。
 
-特别是像 Nvidia 的 Nvlink 这样的技术，它是一种高速通信协议，能让多张显卡之间快速交换数据。如果 MoE 的专家分布在多张显卡上，Nvlink 可以显著提升通信效率，进一步加速推理。所以Deepseek必须用H800练模型，别的家的卡都不行。
+- `-ngl 99`：尽量把所有层 offload 到 GPU；
+- `-c 8192`：最大 context 先设 8K；
+- `--port 8080`：启动本地服务。
 
-举个例子：
-密集模型有 1000 亿参数，需要 4TB 内存。
-MoE 模型也有 1000 亿参数，虽然每次只用一部分，但这 4TB 还是得全部塞进内存，因为处理器随时可能调用任意专家。
+如果爆显存，先减小 context 或 GPU layers；如果速度很慢，检查启动日志里是否真的使用了 CUDA/Metal/Vulkan，而不是全部落到 CPU。
 
-MoE 的稀疏激活虽然节省了带宽，但也带来了新的问题：不规则访问模式（irregular access pattern）。在密集模型中，参数访问是连续的，硬件可以预测并优化数据读取（比如通过缓存）。但在 MoE 中，哪些专家被激活是动态决定的，可能是跳跃式的访问，比如一会读第 1 个专家的参数，一会跳到第 100 个。这种随机性会降低缓存命中率，导致实际效率打折扣。
+llama.cpp 特别适合单用户、边缘设备、Apple Silicon、AMD APU 和各种“不是标准 CUDA 服务器”的机器。它也能 serve，但如果目标是几十到几百个并发用户，通常应优先评估 vLLM/SGLang。
 
-#### MoE 的定义与工作原理
-MoE 是一种模型架构，其中模型由多个专家子网络组成，每个专家负责处理输入空间的特定部分。传统的密集神经网络在每个层处理输入时会使用所有参数，而 MoE 使用一个门控网络（或路由器）根据输入 token 选择性地激活部分专家。
+### 路线 D：vLLM
 
-![MOE](image-5.png)
+[vLLM](https://docs.vllm.ai/) 是当前最重要的高吞吐 LLM serving engine 之一。它提供 continuous batching、PagedAttention、prefix caching、tensor/pipeline/expert parallel、量化和 OpenAI-compatible API。
 
-具体来说，MoE 的工作流程包括：
-1. **门控网络（Router）：** 根据输入 token 计算权重，决定激活哪些专家。
-2. **专家子网络：** 每个专家是一个独立的子网络，仅在被选中时处理输入。
-3. **稀疏激活：** 每个 token 只使用部分专家的参数，减少计算量。
+推荐在 Linux 上使用。Windows 用户可以使用 WSL2，但 GPU、网络和文件路径会多一层复杂度。
 
-这种设计使得 MoE 模型能够在保持计算成本与较小密集模型相当的情况下，拥有更多参数，从而提升性能。例如，Mistral AI 的 Mixtral 8x7B 模型在 467 亿参数下，通过激活 8 个专家中的 2 个，实现了与更小的密集模型相当的推理速度。
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install vllm
 
-为了更直观地比较 MoE 和密集模型的内存带宽使用，以下是基于现有研究的假设性数据：
+vllm serve Qwen/Qwen3-8B \
+  --dtype auto \
+  --max-model-len 8192 \
+  --enable-prefix-caching \
+  --port 8000
+```
 
-| 模型类型       | 总参数规模   | 每次访问参数比例 | 内存需求 (GB, FP16) | 理论内存带宽需求 (GB/s, 每 token) |
-|----------------|--------------|------------------|---------------------|-----------------------------------|
-| 密集模型       | 1000 亿      | 100%             | 200                 | 200                               |
-| MoE 模型       | 1200 亿      | 10%              | 240                 | 24                                |
+调用 OpenAI-compatible API：
 
-注：假设内存带宽为 1000 GB/s，密集模型每次推理需 200 GB 数据，MoE 模型每次只需 24 GB 数据，理论上推理速度可提升约 8 倍。但实际中，缓存未命中和计算开销可能降低这一优势。
+```bash
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "Qwen/Qwen3-8B",
+    "messages": [{"role": "user", "content": "你好！请介绍一下你自己。"}]
+  }'
+```
 
-## 对话与提示
+多张 GPU 常用 `--tensor-parallel-size 2`。不要第一次就把所有开关打开：先用短 context、单 GPU 跑通，再逐项加量化、TP、speculative decoding、长 context 和高并发，并对每一步做 benchmark。
 
-其实写提示还是挺讲究的，好的提示和坏的提示用起来完全不是一个感觉。
+### SGLang、TensorRT-LLM、NIM 与 OpenVINO
 
-但是，该断章了，回头在写~
+#### SGLang
 
-### 系统提示System prompt
-### 系统提示的制作方法
-### 对话格式
+[SGLang](https://github.com/sgl-project/sglang) 是另一个非常重要的高性能 serving framework，在 structured generation、prefix/radix cache、MoE、speculative decoding 和大规模部署上很强。vLLM 和 SGLang 更新都很快，新模型发布时哪个先支持并不固定。
 
-## 部署方法
-哈哈，刚刚想起来这篇文章是关于部署方法的呀！
-好吧不吐槽了。下面会讲解一下目前的常用部署方式！
-一个模型本质上就是一串向量与矩阵操作，部署也就是对模型进行推理inference。
-### llama.cpp系列
+对团队服务，我建议两者都用你的实际 prompt length、output length 和并发做 benchmark，而不是只看网上某张图。
 
-#### lmstudio
-#### Ollama
+#### TensorRT-LLM
 
-### ONNX, Intel OpenVino, Intel Ipex-LLM.
+[TensorRT-LLM](https://nvidia.github.io/TensorRT-LLM/) 是 NVIDIA 针对自家 GPU 的高性能 LLM 推理工具包，支持 in-flight batching、paged KV cache、量化、speculative decoding 和多 GPU/多节点优化。
 
-### Nvidia NIM
+它适合 NVIDIA-only、模型和硬件相对固定、愿意投入 engine build 和版本匹配工作、追求特定模型极限性能的团队。它通常比 vLLM 更“专用”；vLLM 通常更灵活、新模型接入更快。
 
-### vLLM
+#### NVIDIA NIM
 
-### Python 相关
-#### Conda与Docker
-#### Hugging Face Transformers
-#### Pytorch与Tensorflow
+NIM 没有过时。2026 年的 NIM LLM 更像一套生产级打包与运维层：经过验证的容器、模型 profile、健康检查、监控、安全更新和企业支持。当前 NIM LLM 2.x 的核心 inference backend 已经直接对齐 vLLM；不是一种神秘的新 Transformer 算法。
+
+如果你是个人玩家，直接用 vLLM 通常更透明；如果公司希望有人负责 CVE、兼容性和生命周期，NIM 的价值才明显。
+
+#### OpenVINO
+
+[OpenVINO GenAI](https://github.com/openvinotoolkit/openvino.genai) 也没有过时。它仍在积极开发，并支持 continuous batching、prefix caching、speculative decoding、paged attention 和 Intel CPU/GPU/NPU。
+
+如果你有 Intel 硬件，OpenVINO 是应该测试的官方路线。ONNX Runtime 也仍是活跃的通用推理运行时，只是对“最新开源 LLM 一键本地聊天”这件事，通常不是小白最省力的第一选择。
+
+### 已经过时或不再推荐的项目
+
+**IPEX-LLM**：项目已经在 2026-01-28 被 Intel 官方归档。仓库明确写明不再维护、不再修复，并提示存在已知安全问题。新部署不要继续选择它；Intel 路线优先看 OpenVINO GenAI、llama.cpp 的 Intel 后端或当前 Intel 官方推荐栈。
+
+**旧的 NIM 1.x 多 backend 说明**：很多旧文章会说 NIM 自动在 TensorRT-LLM、vLLM 等 backend 间选择。NIM 2.x 已改成 one-container/one-backend，当前文档要以对应版本为准。
+
+**把 Hugging Face Transformers 直接当生产服务器**：Transformers 是非常好的开发和研究基线，但单纯 `model.generate()` 没有自动变成高吞吐服务。生产环境需要请求调度、continuous batching、KV 管理、监控和限流。
+
+---
+
+## 第七部分：vLLM、PagedAttention 与高并发
+
+传统做法常为每个请求预留一块连续的最大 KV cache。
+
+问题是每个用户的输入和输出长度都不一样：有人问一句话，有人贴一本书。提前预留会浪费，临时扩展又会产生碎片。
+
+PagedAttention 的灵感来自操作系统虚拟内存：
+
+- 把一个请求的 KV cache 切成固定 Token 数的小 block；
+- 逻辑上连续的上下文，可以映射到物理上不连续的显存 block；
+- 新 Token 生成时按需分配 block；
+- 共享前缀的请求可以指向同一批物理 block；
+- 分叉写入时使用类似 copy-on-write 的机制。
+
+```text
+请求 A 的逻辑 KV： [0] [1] [2] [3]
+                       │   │   │   │
+物理显存 block：     [17] [04] [91] [22]
+
+请求 B 的相同前缀： [0] [1] [2] [8]
+                       │   │   │   │
+                      [17] [04] [91] [36]
+```
+
+这样做的主要收益不是“attention 数学公式变了”，而是 KV 内存管理更接近按需分配，显存能容纳更多活跃序列，从而提高 batch 和总 throughput。
+
+再配合 **continuous batching**：某个请求完成后立刻移出，下一个等待请求立刻补进来，不必等整个静态 batch 全部结束。GPU 就不容易被一个特别长的回答拖着空转。
+
+vLLM 原始 [PagedAttention 论文](https://arxiv.org/abs/2309.06180)报告了同等延迟下 2～4 倍的 serving throughput 提升；早期博客在特定旧基线下报告过更大的倍数。不要把任何一个历史倍数当成你今天硬件的保证，核心机制才是重点。
+
+部署时常见的优化顺序：
+
+1. 模型和 KV cache 全部放进目标 GPU；
+2. 用真实输入/输出长度测 baseline；
+3. 调整 `max-model-len`，别无脑开到模型理论最大值；
+4. 开 prefix caching；
+5. 调整并发与 batch token 上限；
+6. 再试 FP8/INT8 KV、量化、chunked prefill；
+7. 最后尝试 TP/PP/EP、speculative decoding 与 prefill/decode disaggregation。
+
+优化 throughput 时，一定同时观察 TTFT、ITL、P50/P95/P99、GPU memory、cache hit rate 和错误率。只报一个 tokens/s 没什么意义。
+
+---
+
+## 第八部分：怎样提高 KV cache 命中率
+
+Prefix cache 只喜欢稳定、完全一致的前缀。想让它更容易命中：
+
+1. **稳定内容放前面，动态内容放后面。** 先 system prompt、工具 schema、共享文档，最后再放用户问题。
+2. **不要在开头塞时间戳、request ID 和随机数。** 它们会让后面整段前缀都无法复用。
+3. **固定聊天模板和 tool schema。** JSON 字段顺序、空格、工具排列都尽量 canonicalize。
+4. **同一份长文档不要每次换格式。** 预处理一次并保存相同 Token 序列。
+5. **做 cache-aware routing。** 多个 worker 时，把相同 tenant、conversation 或 document 的请求尽量路由到持有对应 KV 的 worker。
+6. **别频繁重启或在模型间来回切。** 缓存是有生命周期和容量的。
+7. **为高价值共享前缀留足 KV 空间。** cache 太小会不断 eviction，看起来“开了缓存”但命中仍然很低。
+8. **监控命中，而不是靠感觉。** 分开记录 prefill tokens、cached tokens、TTFT 和 eviction。
+
+适合缓存的布局：
+
+```text
+[固定 system prompt]
+[固定工具定义]
+[固定公司知识/文档]
+[稳定的历史对话]
+[本轮用户问题]
+```
+
+不适合缓存的布局：
+
+```text
+[当前时间 + 随机 request id]
+[本轮问题]
+[固定 system prompt]
+[固定公司文档]
+```
+
+安全上也要注意：共享 KV cache 可能产生跨租户侧信道和数据隔离问题。多租户服务应使用 cache salt/namespace、租户隔离和访问控制，不要为了命中率让陌生客户共享敏感前缀。vLLM 已提供 `cache_salt` 等安全机制，生产环境要阅读对应版本文档。
+
+---
+
+## 第九部分：三套实际方案
+
+### 方案一：我只想在自己的电脑上聊天
+
+- 工具：LM Studio 或 Ollama；
+- 模型：先从 7B～14B instruct、Q4/Q5 开始；
+- context：先 8K；
+- 目标：能完整放进显存/统一内存，单请求 decode 快；
+- 指标：TTFT、单用户 token/s、回答质量。
+
+### 方案二：我有一台 128GB 统一内存机器，想跑大 MoE
+
+- 工具：Apple 优先 MLX/llama.cpp/LM Studio；AMD Strix Halo 优先实测 llama.cpp Vulkan/HIP/ROCm；DGX Spark 可用 CUDA/vLLM/TensorRT-LLM；
+- 模型：看总参数确保权重能装下，再看 active parameters 估计 Decode；
+- 量化：通常先 Q4/Q5 或官方 FP8/FP4 支持格式；
+- 指标：真实 token/s、prompt processing speed、功耗、长上下文稳定性；
+- 注意：新 MoE 架构可能权重装得下，但 runtime 还没有高效 fused kernel。
+
+### 方案三：几十到几百人共用一个内部模型
+
+- 操作系统：Linux；
+- 工具：vLLM 或 SGLang，NVIDIA-only 极限优化可测 TensorRT-LLM；
+- API：OpenAI-compatible endpoint 前加认证、限流和观测；
+- 并行：先单机多 GPU TP/EP，再考虑多机；
+- 优化：continuous batching、PagedAttention、prefix caching、cache-aware routing、chunked prefill；
+- 指标：总 output tokens/s、requests/s、P95 TTFT、P95 ITL、每成功任务成本；
+- 压测：必须用真实 prompt/output 长度分布，不能只拿 128 in / 128 out 的漂亮数字。
+
+如果 workload 里有大量共享长文档，prefix cache 会非常重要；如果回答特别长，speculative decoding、低 bit 权重和 Decode 带宽更重要；如果输入特别长，prefill 算力和 chunked prefill 更重要。
+
+---
+
+## 常见误区
+
+### “模型文件 20GB，24GB 显存一定能跑”
+
+不一定。还有 KV cache、workspace、runtime 和 context。
+
+### “量化成 4-bit，速度一定变成 FP16 的四倍”
+
+不一定。可能只省带宽，计算前还要反量化；也可能 kernel 不适合你的 GPU。
+
+### “H100 能加载 NVFP4，所以 H100 有原生 FP4 加速”
+
+错误。Hopper 原生甜点位是 FP8；原生 FP4 是 Blackwell 才加入。
+
+### “MoE 激活 3B，所以只需要 3B 模型的内存”
+
+错误。内存容量仍要装总参数；激活参数主要影响每 Token 的计算和理想读取量。
+
+### “显存可以直接相加，四张卡就是一张大卡”
+
+容量可以通过切分利用，但每一步需要通信，速度和可用功能不会自动等同。
+
+### “最大 context 写 1M，我就应该直接开 1M”
+
+长 context 会吃 KV cache、降低并发、增加 TTFT，而且真实 recall 未必能保持。按需求开。
+
+### “每百万 Token 更便宜的模型一定更省钱”
+
+reasoning 长度、tokenizer、缓存率和成功率都会改变每任务真实成本。
+
+### “缓存命中会让整段回答都免费”
+
+Prefix caching 只跳过命中前缀的 prefill；新输出的 Decode 仍然要逐 Token 计算。
+
+### “排行榜第一就是我的任务第一”
+
+不是。最后必须用你的数据、你的 prompt、你的硬件评测。
+
+---
+
+## 延伸阅读与资料来源
+
+这次大修尽量优先使用论文、项目官方文档和芯片厂商资料：
+
+- Transformer：[Attention Is All You Need](https://arxiv.org/abs/1706.03762)
+- PagedAttention：[论文](https://arxiv.org/abs/2309.06180)与 [vLLM 介绍](https://vllm.ai/blog/2023-06-20-vllm)
+- vLLM prefix caching：[Automatic Prefix Caching](https://docs.vllm.ai/en/latest/features/automatic_prefix_caching.html)
+- vLLM speculative decoding：[Speculators 文档](https://docs.vllm.ai/projects/speculators/en/latest/user_guide/algorithms/)
+- DeepSeek-V3 MTP 与 FP8 权重：[官方仓库](https://github.com/deepseek-ai/DeepSeek-V3)
+- OCP MX formats：[Microscaling Formats Specification](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf)
+- NVIDIA NVFP4：[Transformer Engine 文档](https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/features/low_precision_training/nvfp4/nvfp4.html)
+- NVIDIA 各精度 GEMM 实测说明：[Transformer Engine Speedups](https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/features/low_precision_training/speedups.html)
+- AMD CDNA4：[架构说明](https://www.amd.com/en/technologies/cdna.html)
+- Artificial Analysis：[模型比较](https://artificialanalysis.ai/models/)与[方法](https://artificialanalysis.ai/methodology)
+- Reasoning 与 test-time compute：[OpenAI o1 说明](https://openai.com/index/learning-to-reason-with-llms/)
+- RL reasoning：[DeepSeek-R1 论文](https://arxiv.org/abs/2501.12948)
+- llama.cpp：[GitHub](https://github.com/ggml-org/llama.cpp)
+- vLLM：[文档](https://docs.vllm.ai/)
+- SGLang：[GitHub](https://github.com/sgl-project/sglang)
+- TensorRT-LLM：[文档](https://nvidia.github.io/TensorRT-LLM/)
+- NVIDIA NIM LLM：[官方概览](https://docs.nvidia.com/nim/large-language-models/latest/about-nim-llm/overview.html)
+- OpenVINO GenAI：[GitHub](https://github.com/openvinotoolkit/openvino.genai)
+- IPEX-LLM 归档状态：[官方仓库](https://github.com/intel/ipex-llm)
+
+最后还是那句话：先明确需求，再算容量，然后测你的真实任务。
+
+不要因为某个模型“能启动”就说它适合部署，也不要因为一台机器“跑不动 671B”就说它不能本地跑 LLM。能不能用、好不好用、值不值得，是三个完全不同的问题。
+
+祝各位玩得开心！
