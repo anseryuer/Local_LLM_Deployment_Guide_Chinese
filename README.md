@@ -38,6 +38,13 @@ LLM 的硬件和软件仍在快速更新。如果你发现事实错误或过时�
   - [训练和推理应该选什么精度？](#训练和推理应该选什么精度)
 - [第四部分：如何为 LLM 配一台电脑](#第四部分如何为-llm-配一台电脑)
 - [第五部分：如何选择模型](#第五部分如何选择模型)
+  - [先确定能运行的候选范围](#先确定能运行的候选范围)
+  - [排行榜的适用范围](#排行榜的适用范围)
+  - [LMArena](#lmarena)
+  - [Artificial Analysis](#artificial-analysis)
+  - [建立自己的 private benchmark](#建立自己的-private-benchmark)
+  - [Reasoning、RLVR 与真实成本](#reasoningrlvr-与真实成本)
+  - [模型许可证](#模型许可证)
 - [第六部分：部署方法](#第六部分部署方法)
 - [第七部分：vLLM、PagedAttention 与高并发](#第七部分vllmpagedattention-与高并发)
 - [第八部分：怎样提高 KV cache 命中率](#第八部分怎样提高-kv-cache-命中率)
@@ -176,6 +183,14 @@ Speculative decoding 的流程如下：
 
 DeepSeek-V3 的公开权重包括单独的 MTP 模块；vLLM 也提供 [MTP speculative decoding](https://docs.vllm.ai/projects/speculators/en/latest/user_guide/algorithms/mtp/) 支持。实际加速取决于候选接受率、每次验证的候选数、batch size、模型结构和 kernel 开销；支持 MTP 本身不能保证固定的加速倍数。
 
+MTP 不一定等于“再运行一个完整的小模型”。独立 draft model 会增加一份 draft 权重和 KV cache；内置 MTP 通常只增加若干预测层或 head。两种方法都在增加候选生成和验证计算，但目标模型一次读取权重后可以并行验证多个位置。如果一次验证接受了 `k` 个 Token，目标模型权重的读取成本就近似由 `k` 个输出 Token 分摊；代价是 draft 计算、被拒绝候选的计算和额外 KV 管理。
+
+这解释了为什么 speculative decoding 常用于单请求、memory-bound 的 Decode。此时矩阵单元原本没有达到峰值吞吐，可以用剩余计算能力减少每个已接受 Token 对应的权重读取次数。计算能力与显存带宽之比较高的 GPU，例如 RTX 4090，可能比计算能力较低但带宽相近的 GPU 获得更大收益。高 batch serving 已经可以通过多个请求复用权重，工作负载更接近 compute-bound；此时 draft 开销可能抵消收益。
+
+公开实测可以说明数量级，但不能代替本机 A/B 测试：[Qwen3.8-27B MTP 社区记录](https://github.com/sudoingX/qwen38-mtp)在相同模型上报告了 RTX 4090 从 47.7 提高到 76.3 token/s，以及另一种 Q4 配置从 36.1 提高到 74.8 token/s；两组都使用 `n-max=2`，记录的接受率范围不同。该项目同时报告 speculative decoding 的单流收益在 `--parallel 4` 时消失。[Sequoia](https://arxiv.org/abs/2402.12374)则从更一般的 speculative decoding 角度说明，收益会随硬件的 compute/bandwidth ratio、draft tree、接受率和 offload 方式变化。
+
+因此测试 MTP 时至少固定模型与量化、prompt、输出长度、temperature、并发数和运行时版本，然后记录 baseline 与 MTP 的 token/s、接受率、TTFT、显存占用和功耗。代码和 JSON 等可预测结构可能有较高接受率；开放式文本可能更低。增加 draft token 数也不保证更快，因为被拒绝候选仍消耗计算。
+
 ---
 
 ## 第二部分：决定速度的到底是什么？
@@ -206,9 +221,36 @@ DeepSeek-V3 的公开权重包括单独的 MTP 模块；vLLM 也提供 [MTP spec
 
 50 token/s 是只计算权重读取的上限。实际速度还要扣除 attention、KV cache 读取、量化解码、kernel 启动和调度开销。设备标称 250GB/s 也不代表推理程序能持续利用全部带宽，所以实测结果应低于这个数字。
 
+#### 完整数值例子：H200 运行 FP8 27B 密集模型
+
+NVIDIA 公布的 H200 SXM 规格是 141GB HBM3e、4.8TB/s 显存带宽和 3,958 TFLOPS FP8 Tensor Core 吞吐；官方表格注明该 FP8 数字使用结构化稀疏。下面按不使用稀疏的约 1,979 TFLOPS 计算。假设 27B 模型所有权重都以 1 byte/parameter 的 FP8 保存，忽略 scale 和未量化层，则权重约为 27GB。
+
+先算 batch size 为 1 的 Decode。每生成一个 Token，需要读取约 27GB 权重，并完成约 `2 × 27B = 54 GFLOPs` 的线性层运算：
+
+```text
+带宽上限 = 4,800 GB/s ÷ 27 GB ≈ 178 token/s
+计算上限 = 1,979,000 GFLOPs/s ÷ 54 GFLOPs ≈ 36,648 token/s
+实际理论上限 = min(178, 36,648) = 178 token/s
+```
+
+两个上限相差约 206 倍，所以这个理想化的单流 Decode 明确是 memory-bound。141GB 容量使 27GB 权重可以常驻显存，并留下约 114GB 给 KV cache、workspace 和并发请求；容量本身不会把 178 token/s 的带宽上限提高。
+
+再看权重被多个 Token 复用的情况。FP8 权重每个参数 1 byte，每个 Token 对每个参数约做 2 FLOPs。如果一次矩阵乘法同时处理 `M` 个 Token，线性层的算术强度近似为 `2M FLOPs/byte`。H200 在上述假设下的机器计算/带宽比是：
+
+```text
+1,979 TFLOPS ÷ 4.8 TB/s ≈ 412 FLOPs/byte
+临界 M ≈ 412 ÷ 2 ≈ 206 Token
+```
+
+当 `M=64` 时，权重带宽对应的吞吐上限约为 `4,800 × 64 ÷ 27 = 11,378 token/s`，仍低于 36,648 token/s 的计算上限，线性层仍偏 memory-bound。当 `M=256` 时，带宽上限提高到约 45,511 token/s，超过计算上限，线性层转为 compute-bound。
+
+Prefill 的线性层会同时处理整段输入。单个 2,048 Token prompt 的投影层和 MLP，其 `M` 已远高于上述约 206 Token 的临界值，所以在这个简化 roofline 模型中会受 FP8 计算吞吐限制。实际 Prefill 还包含 attention；full attention 的计算量随序列长度近似按平方增长，因此实际每秒处理的输入 Token 会低于 36,648，并随模型结构和输入长度变化。
+
+这个例子使用的是硬件峰值和简化的 `2 × 参数量` 计算量。真实结果还要扣除 scale、embedding、未量化层、attention、KV cache、activation 读写、kernel 效率和调度开销。判断方法不变：分别计算带宽上限与计算上限，较小的那个才是当前负载的上限。
+
 批量增大后，一次读入的权重可以服务更多 Token，算术强度上升，工作负载可能从 bandwidth-bound 逐渐变成 compute-bound。因此，单用户测试结果不能直接预测 100 个并发用户下的吞吐。
 
-计算过程可参考 NVIDIA 对 [prefill 与 decode](https://developer.nvidia.com/blog/mastering-llm-techniques-inference-optimization/) 以及 [roofline 模型](https://developer.nvidia.com/blog/ai-model-co-design-hardware-friendly-llm-design/) 的说明。
+硬件规格见 NVIDIA [H200 官方页面](https://www.nvidia.com/en-us/data-center/h200/)。计算过程可参考 NVIDIA 对 [prefill 与 decode](https://developer.nvidia.com/blog/mastering-llm-techniques-inference-optimization/) 以及 [roofline 模型](https://developer.nvidia.com/blog/ai-model-co-design-hardware-friendly-llm-design/) 的说明。
 
 ### Latency 与 Throughput
 
@@ -482,13 +524,33 @@ Thunderbolt 5、RDMA 和高速 NIC 可以提高互联带宽并降低部分通信
 
 ## 第五部分：如何选择模型
 
+### 先确定能运行的候选范围
+
+模型排名没有意义，除非模型能在目标硬件、运行时和延迟要求下工作。筛选顺序可以固定为：
+
+1. **容量**：实际权重文件、KV cache、workspace 和并发序列能否同时放入可用内存；
+2. **运行时**：框架是否支持该模型架构、量化格式、attention、MTP 和 tool calling；
+3. **速度**：用权重大小和内存带宽估算单流 Decode 上限，再测 TTFT、ITL 和目标并发下的 throughput；
+4. **任务能力**：在自己的数据上比较成功率，而不是先按参数量或公开总分决定；
+5. **许可证与成本**：确认商用、再分发和衍生模型条款，并计算每个成功任务的 GPU 时间、电力或 API 成本。
+
+例如一张 24GB 显卡若给 KV cache、workspace 和桌面程序留下 6GB，可用于权重的预算约为 18GB。27B 模型按平均 4.5 bit/parameter 计算，纯权重约为 15.2GB，加入 scale 和未量化层后可能仍能完整放入显存；70B 模型的纯权重已经约为 39.4GB，不在候选范围内。如果该卡实测显存带宽约为 1TB/s、模型实际权重占 17GB，则单流 Decode 的权重读取上限约为 `1,000 ÷ 17 = 59 token/s`，实测应低于该数字。
+
+在比较模型前，还需要写出服务目标。例如个人聊天可以要求 P95 TTFT 小于 2 秒、单流输出不低于 30 token/s；内部服务可以要求 32 并发下 P95 TTFT 小于 5 秒、总吞吐不低于 500 output token/s。没有这些约束，“速度快”无法对应具体选择。
+
 ### 排行榜的适用范围
 
 选择模型至少要同时看：任务、dense/MoE、thinking/instruct、总参数与激活参数、context、tokenizer、运行时支持、量化、许可证，以及你的硬件上的 TTFT、token/s、并发和功耗。
 
-排行榜提供候选名单，不替你做最终决定。公开 benchmark 可能被训练数据污染，也可能和你的任务完全不同。
+排行榜用于产生候选名单，不用于直接决定生产模型。固定、公开的 benchmark 会面临两类问题：测试题可能进入预训练或微调数据；即使没有直接泄漏，训练方也可以针对公开任务的题型、prompt、评分器和总分反复选择数据、checkpoint 与推理参数。多次围绕同一测试集做选择，本身就会逐步过拟合该测试集。
 
-最终选择应使用与业务一致的 eval。可以收集 30～200 个实际问题并预先规定评分方法：代码任务运行测试；结构化抽取比较字段值和 JSON schema；客服回答由不了解模型名称的真实使用者盲评。样本量较小时还应报告每类任务的原始成功数，避免只看一个波动较大的总分。
+这不表示公开 benchmark 没有用。数学、代码、长上下文、工具调用和人类偏好测量的是不同能力，多个独立结果可以用于缩小范围。需要检查 benchmark 的题目来源、更新时间、评分方法、是否允许 reasoning、每题采样次数和置信区间。[LiveBench](https://arxiv.org/abs/2406.19314)通过频繁更新题目和使用可自动核对的答案降低污染风险，但仍不能保证其任务分布等于你的实际工作。
+
+### LMArena
+
+[LMArena](https://lmarena.ai/) 的核心方法不是固定选择题，而是匿名展示两个模型对同一真实用户 prompt 的回答，让用户选择 A、B、平局或都不好，再用成对偏好数据计算排名。[Chatbot Arena 论文](https://arxiv.org/abs/2403.04132)介绍了其 pairwise comparison 方法。它的优点是问题来自真实用户，评分直接反映人类看到完整回答后的偏好，并且没有一套长期固定的标准答案。
+
+它测量的仍然是“LMArena 用户在该 prompt 分布下更喜欢哪个回答”，不是所有任务的正确率。结果会受到回答长度、格式、措辞、拒答方式、用户语言、题目类别和投票人群影响；它也不测量你的硬件能否运行模型、量化后的质量、许可证、TTFT、并发吞吐或任务成本。模型训练方还可以针对 Arena 中常见的回答风格优化。因此 LMArena 适合发现候选模型和比较通用对话偏好，不能替代代码单元测试、企业文档抽取准确率或特定写作风格的内部评测。
 
 ### Artificial Analysis
 
@@ -498,13 +560,39 @@ Thunderbolt 5、RDMA 和高速 NIC 可以提高互联带宽并降低部分通信
 
 Artificial Analysis Index 是多个 benchmark 的加权组合，其任务分布和权重不一定等于你的业务分布。它可以用于缩小候选范围，最终选择仍应由业务 eval 决定。
 
-LMArena 的人类盲选榜测量用户对成对回答的偏好，因此会受到回答长度、格式和措辞影响。模型技术报告用于确认架构、context、训练方法和许可证。Artificial Analysis、LMArena 和技术报告测量的内容不同，不能相互替代。
+模型技术报告用于确认架构、context、训练方法和许可证。Artificial Analysis、LMArena、固定 benchmark 和技术报告测量的内容不同，不能相互替代。
+
+### 建立自己的 private benchmark
+
+最终选择应使用没有公开发布、与实际任务一致的 private benchmark。可以先收集 30～200 个真实任务，删除个人和公司敏感信息，为每一题预先规定评分方法，并保留一部分从未用于调 prompt 或选模型的 held-out 集合。
+
+| 任务类型 | 评分方法示例 |
+|---|---|
+| 代码修改 | 在隔离环境运行单元测试，记录通过数、编译错误和超时 |
+| 结构化抽取 | 比较字段值、JSON schema、漏项率和多余字段率 |
+| 数学与规则推理 | 使用标准答案或程序 verifier；把最终答案和过程格式分开评分 |
+| RAG/企业问答 | 核对引用位置、事实正确率、无依据陈述和拒答正确率 |
+| 工具调用 | 检查工具选择、参数 schema、调用次数和最终任务是否完成 |
+| 客服、总结、翻译 | 使用固定 rubric，由不知道模型名称的评审者盲评 |
+| 小说与开放式写作 | 盲评情节一致性、人物声音、风格遵循、约束满足和重复程度 |
+
+每次评测应记录完整配置：模型和 checkpoint、量化、chat template、system prompt、temperature、reasoning effort、context、运行时版本和硬件。性能至少分别测量 512、4K 和目标长输入下的 TTFT，单流 ITL，以及并发 1、4、16、目标峰值时的总 throughput 和 P95/P99 延迟。质量结果还应配套记录平均输入/输出/reasoning Token、失败与重试次数、峰值内存和功耗。
+
+private benchmark 也会被自己过拟合。调 prompt、选择量化或修改 agent 流程时只使用开发集；最终比较使用 held-out 集。可以每月替换 10%～20% 题目并保留历史版本，既观察新任务，也检查模型升级是否让旧任务退步。样本量较小时报告每类任务的原始成功数，例如“代码 37/50、抽取 44/50”，不要只报一个加权总分。
+
+选择流程可以分成两轮：先淘汰容量、许可证、格式正确率或任务成功率不达标的模型；再在合格模型中比较满足延迟 SLA 时的 throughput、功耗和每个成功任务成本。这样不会让一个便宜但经常失败的模型仅凭 Token 单价胜出。
 
 ### Reasoning、RLVR 与真实成本
 
 当前主流模型通常提供 thinking/reasoning 模式，部分模型也提供可关闭推理的 instruct 模式。
 
-很多模型通过 reinforcement learning 学会在回答前进行更长的推理。RLVR（Reinforcement Learning with Verifiable Rewards）会对数学答案、代码测试、格式约束等可以自动验证的结果给奖励。DeepSeek-R1 等工作证明了这种训练能显著强化数学和代码推理；OpenAI 也公开说明 reasoning 能力会随训练时 RL compute 和测试时 thinking compute 增长。
+很多模型通过 reinforcement learning 学会在回答前进行更长的推理。RLVR（Reinforcement Learning with Verifiable Rewards）使用可以自动检查的结果作为奖励，例如数学最终答案、代码单元测试、逻辑约束和输出格式。DeepSeek-R1 等工作显示了数学和代码任务上的提升；OpenAI 也公开说明部分 reasoning 能力会随训练时 RL compute 和测试时 thinking compute 增长。
+
+RLVR 的直接训练信号在哪些任务上最可靠，reasoning 的收益通常就在哪些任务上最容易测量。数学题可以核对答案，代码可以运行测试，工具调用可以检查 schema 和环境状态；小说质量、语气、审美和开放式建议没有唯一正确答案，不能直接使用同一种 verifier。专门研究写作训练的 [Writing-Zero](https://arxiv.org/abs/2506.00103)正是因为普通 RLVR 与非可验证写作任务之间存在这一缺口，才另外设计 pairwise generative reward model 和训练方法。
+
+因此不能从“模型是 reasoning model”直接推出“打开 reasoning 后小说一定写得更好”。规划长篇结构、检查人物关系或满足明确写作约束可能受益，但文风、创意和人物声音未必提高；更长的推理还可能增加重复、解释性文字、延迟和成本。模型厂商也可能混合使用 SFT、偏好训练、RLVR、模型评审和专门写作数据，所以不能只根据模型标签推断训练内容。
+
+对于小说、翻译、总结、分类和普通聊天，应在同一模型上比较 non-thinking、低 reasoning effort 和高 reasoning effort。写作任务可以固定 50 个 prompt 和输出长度，由不知道配置的评审者做成对盲评；同时记录平均输出 Token、端到端延迟和每个被选中回答的成本。如果 reasoning 版本的胜率没有提高，就不应为额外 trajectory 付费或占用本地 GPU。
 
 只比较每百万 Token 的单价会遗漏每个任务消耗的 Token 数：
 
@@ -804,17 +892,23 @@ Prefix cache 的命中条件是完全一致的 Token 前缀。可以采用以下
 以下资料以论文、项目官方文档和芯片厂商文档为主：
 
 - Transformer：[Attention Is All You Need](https://arxiv.org/abs/1706.03762)
+- H200：[NVIDIA 官方规格](https://www.nvidia.com/en-us/data-center/h200/)
 - PagedAttention：[论文](https://arxiv.org/abs/2309.06180)与 [vLLM 介绍](https://vllm.ai/blog/2023-06-20-vllm)
 - vLLM prefix caching：[Automatic Prefix Caching](https://docs.vllm.ai/en/latest/features/automatic_prefix_caching.html)
 - vLLM speculative decoding：[Speculators 文档](https://docs.vllm.ai/projects/speculators/en/latest/user_guide/algorithms/)
 - DeepSeek-V3 MTP 与 FP8 权重：[官方仓库](https://github.com/deepseek-ai/DeepSeek-V3)
+- Speculative decoding 与硬件 compute/bandwidth ratio：[Sequoia](https://arxiv.org/abs/2402.12374)
+- 消费级 GPU 的 MTP A/B 记录：[Qwen3.8-27B MTP 社区 benchmark](https://github.com/sudoingX/qwen38-mtp)
 - OCP MX formats：[Microscaling Formats Specification](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf)
 - NVIDIA NVFP4：[Transformer Engine 文档](https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/features/low_precision_training/nvfp4/nvfp4.html)
 - NVIDIA 各精度 GEMM 实测说明：[Transformer Engine Speedups](https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/features/low_precision_training/speedups.html)
 - AMD CDNA4：[架构说明](https://www.amd.com/en/technologies/cdna.html)
 - Artificial Analysis：[模型比较](https://artificialanalysis.ai/models/)与[方法](https://artificialanalysis.ai/methodology)
+- 人类成对偏好评测：[Chatbot Arena 论文](https://arxiv.org/abs/2403.04132)
+- 降低公开测试集污染：[LiveBench](https://arxiv.org/abs/2406.19314)
 - Reasoning 与 test-time compute：[OpenAI o1 说明](https://openai.com/index/learning-to-reason-with-llms/)
 - RL reasoning：[DeepSeek-R1 论文](https://arxiv.org/abs/2501.12948)
+- 非可验证写作任务的奖励设计：[Writing-Zero](https://arxiv.org/abs/2506.00103)
 - llama.cpp：[GitHub](https://github.com/ggml-org/llama.cpp)
 - vLLM：[文档](https://docs.vllm.ai/)
 - SGLang：[GitHub](https://github.com/sgl-project/sglang)
