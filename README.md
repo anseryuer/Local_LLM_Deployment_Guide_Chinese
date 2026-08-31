@@ -1,6 +1,6 @@
 # 本地部署大语言模型的中文教学
 
-> 最后一次大修：2026 年 8 月 30 日
+> 最后一次大修：2026 年 8 月 31 日
 > 本文优先解释计算过程和硬件限制。具体型号、软件版本和命令可能继续变化。
 
 Hello！大家好，这里是 Anser！
@@ -28,16 +28,33 @@ LLM 的硬件和软件仍在快速更新。如果你发现事实错误或过时�
   - [MTP 与 speculative decoding](#mtp-与-speculative-decoding)
 - [第二部分：决定速度的到底是什么？](#第二部分决定速度的到底是什么)
   - [容量、带宽和算力](#容量带宽和算力)
+    - [完整数值例子：H200 运行 FP8 27B 密集模型](#完整数值例子h200-运行-fp8-27b-密集模型)
   - [Latency 与 Throughput](#latency-与-throughput)
   - [模型到底要占多少内存？](#模型到底要占多少内存)
   - [MoE：总参数很大，激活参数很小](#moe总参数很大激活参数很小)
 - [第三部分：精度与量化](#第三部分精度与量化)
+  - [浮点数和整数到底差在哪？](#浮点数和整数到底差在哪)
   - [FP4 为什么必须缩放？](#fp4-为什么必须缩放)
   - [MXFP4 与 NVFP4](#mxfp4-与-nvfp4)
   - [不同 GPU 架构支持什么精度？](#不同-gpu-架构支持什么精度)
+    - [H100 运行 NVFP4 权重](#h100-运行-nvfp4-权重)
   - [训练和推理应该选什么精度？](#训练和推理应该选什么精度)
+  - [GGUF、GPTQ、AWQ、FP8 又是什么？](#ggufgptqawqfp8-又是什么)
 - [第四部分：如何为 LLM 配一台电脑](#第四部分如何为-llm-配一台电脑)
-- [第五部分：如何选择模型](#第五部分如何选择模型)
+  - [先问自己四个问题](#先问自己四个问题)
+  - [独立显卡路线](#独立显卡路线)
+  - [大容量统一内存路线](#大容量统一内存路线)
+- [第五部分：多 GPU、多机与并行方法](#第五部分多-gpu多机与并行方法)
+  - [为什么会需要多 GPU？](#为什么会需要多-gpu)
+  - [Data Parallel：每张卡处理不同请求](#data-parallel每张卡处理不同请求)
+  - [Tensor Parallel：一层矩阵由多张卡共同计算](#tensor-parallel一层矩阵由多张卡共同计算)
+  - [Pipeline Parallel：不同 GPU 保存不同层](#pipeline-parallel不同-gpu-保存不同层)
+  - [Expert Parallel：MoE Token 在 GPU 之间重新分发](#expert-parallelmoe-token-在-gpu-之间重新分发)
+  - [vLLM 中怎样选择和配置并行方式](#vllm-中怎样选择和配置并行方式)
+  - [并行方式怎样影响 latency、单请求速度和 throughput](#并行方式怎样影响-latency单请求速度和-throughput)
+  - [三种具体机器应该怎样选](#三种具体机器应该怎样选)
+  - [先查看拓扑，再决定并行方式](#先查看拓扑再决定并行方式)
+- [第六部分：如何选择模型](#第六部分如何选择模型)
   - [先确定能运行的候选范围](#先确定能运行的候选范围)
   - [排行榜的适用范围](#排行榜的适用范围)
   - [LMArena](#lmarena)
@@ -45,11 +62,40 @@ LLM 的硬件和软件仍在快速更新。如果你发现事实错误或过时�
   - [建立自己的 private benchmark](#建立自己的-private-benchmark)
   - [Reasoning、RLVR 与真实成本](#reasoningrlvr-与真实成本)
   - [模型许可证](#模型许可证)
-- [第六部分：部署方法](#第六部分部署方法)
-- [第七部分：vLLM、PagedAttention 与高并发](#第七部分vllmpagedattention-与高并发)
-- [第八部分：怎样提高 KV cache 命中率](#第八部分怎样提高-kv-cache-命中率)
-- [第九部分：三套实际方案](#第九部分三套实际方案)
+- [第七部分：部署方法](#第七部分部署方法)
+  - [路线 A：LM Studio](#路线-alm-studio)
+  - [路线 B：Ollama](#路线-bollama)
+  - [路线 C：llama.cpp](#路线-cllamacpp)
+  - [路线 D：vLLM](#路线-dvllm)
+  - [SGLang、TensorRT-LLM、NIM 与 OpenVINO](#sglangtensorrt-llmnim-与-openvino)
+    - [SGLang](#sglang)
+    - [TensorRT-LLM](#tensorrt-llm)
+    - [NVIDIA NIM](#nvidia-nim)
+    - [OpenVINO](#openvino)
+  - [已经过时或不再推荐的项目](#已经过时或不再推荐的项目)
+- [第八部分：vLLM、PagedAttention 与高并发](#第八部分vllmpagedattention-与高并发)
+  - [PagedAttention 怎样管理 KV block](#pagedattention-怎样管理-kv-block)
+  - [Continuous Batching 到底调度什么](#continuous-batching-到底调度什么)
+  - [10,000 个请求到来后，吞吐和单请求速度怎样变化](#10000-个请求到来后吞吐和单请求速度怎样变化)
+- [第九部分：怎样提高 KV cache 命中率](#第九部分怎样提高-kv-cache-命中率)
+- [第十部分：本地推理的三年成本怎样计算](#第十部分本地推理的三年成本怎样计算)
+  - [先把成本和产出写成公式](#先把成本和产出写成公式)
+  - [完整例子：一台 4,000 美元的 RTX 5090 工作站](#完整例子一台-4000-美元的-rtx-5090-工作站)
+  - [怎样换成自己的硬件和 API 价格](#怎样换成自己的硬件和-api-价格)
+- [第十一部分：三套实际方案](#第十一部分三套实际方案)
+  - [方案一：我只想在自己的电脑上聊天](#方案一我只想在自己的电脑上聊天)
+  - [方案二：我有一台 128GB 统一内存机器，想跑大 MoE](#方案二我有一台-128gb-统一内存机器想跑大-moe)
+  - [方案三：几十到几百人共用一个内部模型](#方案三几十到几百人共用一个内部模型)
 - [常见误区](#常见误区)
+  - [模型文件 20GB，是否一定能在 24GB 显存上运行？](#模型文件-20gb是否一定能在-24gb-显存上运行)
+  - [量化成 4-bit，是否一定达到 FP16 的四倍速度？](#量化成-4-bit是否一定达到-fp16-的四倍速度)
+  - [H100 能加载 NVFP4，是否表示它有原生 FP4 加速？](#h100-能加载-nvfp4是否表示它有原生-fp4-加速)
+  - [MoE 激活 3B，是否只需要 3B 模型的内存？](#moe-激活-3b是否只需要-3b-模型的内存)
+  - [四张显卡的容量和性能能否直接相加？](#四张显卡的容量和性能能否直接相加)
+  - [模型支持 1M context，是否应把服务上限直接设为 1M？](#模型支持-1m-context是否应把服务上限直接设为-1m)
+  - [每百万 Token 单价较低的模型，是否一定具有较低的任务成本？](#每百万-token-单价较低的模型是否一定具有较低的任务成本)
+  - [Prefix caching 是否会跳过整段回答的计算？](#prefix-caching-是否会跳过整段回答的计算)
+  - [排行榜第一是否一定适合自己的任务？](#排行榜第一是否一定适合自己的任务)
 - [延伸阅读与资料来源](#延伸阅读与资料来源)
 
 ---
@@ -487,7 +533,7 @@ AMD 独显和 Instinct 可通过 ROCm、vLLM、SGLang 和 llama.cpp 运行部分
 
 统一内存系统让 CPU 和 GPU 访问同一组物理内存，模型不需要在独立的系统 RAM 与显存之间逐层复制。它可以用较低成本提供 128GB 以上的 GPU 可访问内存。限制是 LPDDR5X 带宽通常低于数据中心 HBM，软件也必须为相应 GPU 后端和模型结构提供有效 kernel。因此，这类系统主要用于大容量 MoE 的单用户或低并发推理，而不是直接替代高并发 HBM GPU 服务器。
 
-截至 2026-08-30，相关平台的公开规格如下：
+截至 2026-08-31，相关平台的公开规格如下：
 
 | 平台 | 内存与带宽 | 可用软件与场景 | 限制 |
 |---|---|---|---|
@@ -495,17 +541,19 @@ AMD 独显和 Instinct 可通过 ROCm、vLLM、SGLang 和 llama.cpp 运行部分
 | Apple M5 Max | 最高 128GB，最高 614GB/s | 便携/桌面单用户，中大型量化模型 | 软件主要走 MLX/Metal/llama.cpp |
 | NVIDIA DGX Spark（GB10） | 128GB coherent LPDDR5X，273GB/s | CUDA/Blackwell 开发、FP4、约 200B 以内模型实验 | 带宽远低于 HBM 卡；“1 PFLOP FP4”包含特定精度/稀疏条件 |
 | AMD Strix Halo / Ryzen AI Max+ 395 | 最高 128GB LPDDR5X，256GB/s | Windows/Linux，llama.cpp Vulkan/HIP 与部分 ROCm 路线 | RDNA 3.5 不是 CDNA4，不具有 MI350 的原生 MXFP4 矩阵能力 |
-| Intel Crescent Island | 最高 480GB LPDDR5X，350W PCIe 卡 | 未来的大容量数据中心推理 | 仍是面向客户采样/生态建设的产品，不等于现在能买到的家用卡 |
+| Intel Crescent Island | 最高 480GB LPDDR5X，350W PCIe 卡 | 未来的大容量数据中心推理 | Intel 计划 2026 年下半年向客户采样；尚未公布广泛上市日期 |
 
-官方规格来源：[Apple M5 Ultra](https://www.apple.com/newsroom/2026/08/apple-introduces-new-mac-studio-with-m5-max-and-m5-ultra/)、[DGX Spark](https://www.nvidia.com/en-us/products/workstations/dgx-spark/)、[Ryzen AI Halo](https://www.amd.com/en/products/processors/desktops/ryzen/ryzen-ai-halo/ryzen-ai-max-plus-395.html)、[Intel Crescent Island](https://newsroom.intel.com/client-computing/intel-outlines-architectures-for-agentic-ai-at-hot-chips-2026)。
+官方规格来源：[Apple M5 Ultra](https://www.apple.com/newsroom/2026/08/apple-introduces-new-mac-studio-with-m5-max-and-m5-ultra/)、[DGX Spark](https://www.nvidia.com/en-us/products/workstations/dgx-spark/)、[Ryzen AI Halo](https://www.amd.com/en/products/processors/desktops/ryzen/ryzen-ai-halo/ryzen-ai-max-plus-395.html)、[Intel Crescent Island 2025 年采样计划](https://newsroom.intel.com/artificial-intelligence/intel-to-expand-ai-accelerator-portfolio-with-new-gpu)与 [Hot Chips 2026 规格更新](https://newsroom.intel.com/client-computing/intel-outlines-architectures-for-agentic-ai-at-hot-chips-2026)。
 
-Intel 官方公布的产品名是 **Crescent Island**；没有查到名为 Crescent Lake 的对应官方产品。
+**Crescent Island** 是未来半年值得关注的产品，但“客户采样”不等于零售或广泛供货。Intel 当前公开信息把它定位为 Xe3P 架构、风冷、面向数据中心推理的大容量 GPU；在正式供货、软件支持和第三方实测出现之前，不能用纸面容量代替购买建议。
 
 以 Qwen3-Next-80B-A3B 为例，按 4.5 bit/parameter 估算的纯权重约为 45GB；128GB 统一内存扣除 45GB 权重后，还剩约 83GB 供操作系统、运行时、未量化层和 KV cache 使用。每 Token 激活 3B 参数，对应的激活权重读取下限约为 1.69GB。购买前还需要用目标运行时的实测 token/s 和内存占用验证，因为专家 kernel、共享层和量化格式会使实际结果偏离这两个下限。
 
 同时服务约 100 名用户时，应按请求到达率、平均输入/输出长度和延迟 SLA 计算所需总 tokens/s。高并发会增加 Prefill 计算量、KV cache 占用和同时被访问的专家数量。此时多张数据中心 GPU 的 HBM 带宽、矩阵吞吐、expert parallel 与 serving 软件通常比单个统一内存 SoC 提供更高吞吐。两类系统面向的负载不同。
 
-### 多显卡与多机
+## 第五部分：多 GPU、多机与并行方法
+
+### 为什么会需要多 GPU？
 
 多卡有两个不同目标：
 
@@ -521,15 +569,19 @@ Intel 官方公布的产品名是 **Crescent Island**；没有查到名为 Cresc
 | Pipeline Parallel（PP） | 连续的层分别放到不同 GPU，例如 80 层模型两卡各放约 40 层 | 每个 microbatch 在 stage 边界传一次 hidden state | 单卡装不下，但跨卡互联比 NVLink 慢；或需要跨机器切分 |
 | Expert Parallel（EP） | MoE 的不同 expert 放到不同 GPU；attention、router 和 shared expert 可能复制或另行 TP | 每个 MoE 层把 Token hidden state 发给被选中的 expert，再把结果发回，通常是两次 all-to-all | MoE expert 权重装不下或需要并行计算多个 expert |
 
-#### Data Parallel：每张卡处理不同请求
+### Data Parallel：每张卡处理不同请求
 
 如果一个模型连同 KV cache 能装进单张 GPU，DP 是提高多用户吞吐最直接的方法。两张 GPU 各加载一份模型，请求 A 交给 GPU 0，请求 B 交给 GPU 1。两张卡不需要在每一层同步 activation，因此即使两张卡之间只有 PCIe，甚至两台机器之间只有普通网络，也可以工作。
 
 DP 不会增加单个 replica 的模型容量。一个 40GB 权重模型不能因为有两张 32GB 卡就使用纯 DP；它仍然需要 TP 或 PP 把一个 replica 切开。另一方面，如果 20GB 模型已经能装进每张卡，两张卡做 DP 通常比把同一个请求做 TP 更适合提高总 requests/s。理想情况下总吞吐接近 replica 数量的倍数，直到 API 网关、CPU、网络、请求分布或某个 replica 的 KV cache 成为限制。
 
-#### Tensor Parallel：一层矩阵由多张卡共同计算
+### Tensor Parallel：一层矩阵由多张卡共同计算
 
 TP 会切分每一层的权重。例如一个线性层的权重矩阵可以按输出列切开，两张 GPU 各计算一半；下一步需要把结果合并，或把下一层输入按另一种方式切开。大矩阵的每卡占用接近原来的 `1 / TP`，但 norm、部分 embedding 和 metadata 可能复制；attention 的 KV heads 通常随 TP 切分，GQA 模型在 KV head 数不能整除 TP degree 时也可能复制，所以每卡显存不会严格等于总占用除以卡数。Megatron 风格的 Transformer TP 通常在一个 Transformer layer 中为 attention output 和 MLP output 各进行一次 collective；具体是 all-reduce、all-gather 还是 reduce-scatter，取决于模型和运行时。
+
+下图是 vLLM 官方博客中的两卡 TP 例子：同一个输入 `X` 交给两张 GPU，每张卡只保存和计算权重矩阵的一部分，再通过 collective 合并结果。图来自 [vLLM《Distributed Inference and Serving》](https://vllm.ai/blog/2025-02-17-distributed-inference)。
+
+![vLLM 官方两卡 Tensor Parallel 矩阵切分示意图](https://vllm.ai/blog-assets/figures/distributed-inference/tensor_parallelism.png)
 
 TP 传输的是 activation，不是每一步重新传整份模型权重。设一次 collective 的 activation payload 为：
 
@@ -550,7 +602,7 @@ M = 2,048：S = 32MiB
 
 `M=1` 时总字节数不大，但 160 次同步的启动延迟可能比传输时间更重要；`M=2,048` 时数据量明显增大，互联带宽更重要。因此 TP 同时要求低延迟和高带宽。NVLink/NVSwitch 更适合 TP；跨 NUMA 的 PCIe 或跨机器 Ethernet 即使能够运行，也可能抵消一部分计算加速。上面的数字用于说明数量级，GQA、sequence parallel、fused collective 和不同 TP 实现会改变实际通信次数和 payload。
 
-#### Pipeline Parallel：不同 GPU 保存不同层
+### Pipeline Parallel：不同 GPU 保存不同层
 
 PP 不切一层内部的矩阵。假设模型有 80 层，PP=2 时可以让 GPU 0 保存前 40 层、GPU 1 保存后 40 层。KV cache 也按层保存在对应 GPU。每个 microbatch 经过第一个 stage 后，只需要把边界处的 hidden state 发给第二个 stage。
 
@@ -562,7 +614,7 @@ hidden size 仍为 8,192、BF16 时，单个 Token 通过一个 stage 边界的 
 
 两阶段 PP 每个 Token 只跨一个边界；TP=2 则几乎每层都要同步。因此 PP 对慢互联更宽容。代价是一个请求必须先完成前半模型，再计算后半模型。只有一个 Decode 请求时，两张卡不能同时计算这个 Token 的不同层，单请求 latency 通常不会因为 PP=2 减半。请求或 microbatch 足够多时，GPU 0 可以处理下一批请求的前半段，同时 GPU 1 处理上一批的后半段，才会形成流水线。stage 的层数、计算量或 KV 占用不均衡时，较慢的 stage 决定总吞吐。
 
-#### Expert Parallel：MoE Token 在 GPU 之间重新分发
+### Expert Parallel：MoE Token 在 GPU 之间重新分发
 
 EP 只适用于 MoE。router 为每个 Token 选择 top-k expert 后，运行时需要把该 Token 的 hidden state 发到保存相应 expert 的 GPU；expert 完成计算后再把结果送回原来的 Token 顺序。一次 MoE 层通常至少包括 dispatch 和 combine 两次 all-to-all。
 
@@ -574,7 +626,78 @@ Token 数 M × top-k × hidden size H × 每元素 bytes
 
 例如 `M=256`、`top-k=2`、`H=8,192`、BF16 时，dispatch 数据约为 8MiB，返回结果又约为 8MiB；如果有 64 个 MoE 层，所有层的这部分原始数据总和约为 1GiB。实际流量还受 expert 分布、负载不均、capacity/padding、量化和通信实现影响。EP 的 all-to-all 会同时使用多条链路，因此比只跨 stage 边界一次的 PP 更依赖互联拓扑。大量 Token 被路由到少数 expert 时，即使总带宽足够，也会出现部分 GPU 忙、部分 GPU 等待。
 
-#### 三种具体机器应该怎样选
+### vLLM 中怎样选择和配置并行方式
+
+下面是当前 vLLM 中最直接相关的参数。参数名需要以实际安装版本的 `vllm serve --help` 为准；旧教程中的默认值不一定仍然有效。
+
+| 参数 | 控制什么 | 容易混淆的地方 |
+|---|---|---|
+| `--tensor-parallel-size N` / `-tp N` | 一个 replica 内，每一层切到多少张 GPU | TP 越大，每卡权重通常越少，但逐层 collective 的参与卡数也越多 |
+| `--pipeline-parallel-size N` / `-pp N` | 一个 replica 分成多少个连续 layer stage | PP 解决容量时很有效；低并发下会有 pipeline bubble，单请求 latency 不会按 stage 数等比例下降 |
+| `--data-parallel-size N` / `-dp N` | 建立多少个模型 replica | 每个 DP rank 都保存自己的一套权重和 KV cache；`--max-num-seqs` 按每个 rank 计算 |
+| `--enable-expert-parallel` / `-ep` | MoE layer 使用 EP，而不是仅按 TP 切 expert 权重 | attention 等非 MoE 部分仍可能使用 TP；还要测试 all-to-all backend 和 expert 负载均衡 |
+| `--distributed-executor-backend mp\|ray` | worker 由本机多进程还是 Ray 管理 | 单机通常可用 `mp`；官方多节点示例通常使用 Ray，也可按当前文档配置原生多进程 |
+| `--gpu-memory-utilization 0.90` | 每个 vLLM instance 可使用的 GPU 显存比例 | 这是每个 instance 的比例，不是整台机器共享的一笔显存 |
+| `--kv-cache-memory-bytes ...` | 明确指定每张 GPU 的 KV cache 大小 | 设定后会覆盖基于 `gpu-memory-utilization` 的 KV cache 自动估算 |
+| `--max-model-len N` | 服务允许的最大序列长度 | 设得过大可能压缩可用并发；实际占用还取决于已经缓存的 Token 数 |
+| `--max-num-seqs N` | 一次 scheduler iteration 最多包含多少条 sequence | 它不是 HTTP waiting queue 的长度，也不是同时连接数 |
+| `--max-num-batched-tokens N` | 一次 iteration 最多安排多少 Token | 较大值通常有利于 Prefill throughput，但可能增加 Decode 的 ITL |
+| `--cpu-offload-gb N` | 每张 GPU 额外从 CPU 内存换入多少 GiB 权重 | 这是以 PCIe 传输换容量；每次 forward 都可能付出传输成本 |
+
+常见配置可以直接写成下面几种形式。
+
+```bash
+# 4 张有高速 NVLink/NVSwitch 互联的 GPU：一个 TP=4 replica
+vllm serve MODEL \
+  --tensor-parallel-size 4 \
+  --gpu-memory-utilization 0.90
+
+# 两张没有 NVLink 的消费卡：按层分成两个 pipeline stage
+CUDA_VISIBLE_DEVICES=0,1 vllm serve MODEL \
+  --tensor-parallel-size 1 \
+  --pipeline-parallel-size 2 \
+  --gpu-memory-utilization 0.90
+
+# 两个节点、每节点 8 张高速互联 GPU：节点内 TP=8，节点间 PP=2
+vllm serve MODEL \
+  --tensor-parallel-size 8 \
+  --pipeline-parallel-size 2 \
+  --distributed-executor-backend ray
+
+# 8 张 GPU：两个 replica，每个 replica 内 TP=4
+vllm serve MODEL \
+  --data-parallel-size 2 \
+  --tensor-parallel-size 4
+
+# MoE：8 张 GPU 切分 expert，并启用 expert load balancing
+vllm serve MODEL \
+  --tensor-parallel-size 8 \
+  --enable-expert-parallel \
+  --enable-eplb
+```
+
+第二个例子不是说“两张无 NVLink GPU 永远应该 PP=2”。它来自 vLLM 当前对无 NVLink GPU 的一般建议：如果 TP 的高频 collective 太慢，可以用 PP 减少通信。模型结构是否能均匀分层、请求并发能否填充 pipeline、PCIe P2P 是否可用，都会改变结果。先分别跑 `TP=2` 和 `PP=2`，再比较相同负载下的 TTFT、ITL、总 tokens/s 和每卡显存。
+
+vLLM 官方对多节点的一般建议是：高速互联留给 TP，较慢的节点边界使用 PP。下图左侧表示一个主进程控制同一 replica 内的多个 GPU worker；每个 worker 持有自己 rank 对应的模型分片。图来自 [vLLM《Anatomy of vLLM》](https://vllm.ai/blog/2025-09-05-anatomy-of-vllm)。
+
+![vLLM MultiProcExecutor：一个进程对应一个 GPU rank](https://vllm.ai/blog-assets/figures/2025-vllm-anatomy/multiprocexecutor.png)
+
+### 并行方式怎样影响 latency、单请求速度和 throughput
+
+下面的“增加/减少”都是在模型、精度和请求分布相同，并且没有出现其他瓶颈时的常见方向，不是固定倍数。
+
+| 改动 | 模型容量 | 单请求 latency / token speed | 多用户 throughput | 主要代价 |
+|---|---|---|---|---|
+| DP 从 1 增到 2 | 单个 replica 容量不变，总显存保存两份权重 | 单个请求基本不变 | 请求足够多时可接近 2 倍 | 权重和 KV cache 复制；负载均衡不均会损失吞吐 |
+| TP 从 1 增到 2 | 每卡权重通常接近减半 | 大矩阵并行可能加快；低 batch Decode 可能被 collective latency 抵消 | 更大的 batch/KV 容量可能提高吞吐 | 几乎每层通信，依赖低延迟和高带宽 |
+| PP 从 1 增到 2 | 每卡层数通常接近减半 | 单请求不会把两个 stage 同时填满，latency 通常不降，甚至增加 | 请求足够多时两个 stage 可以并行处理不同 microbatch | pipeline bubble、最慢 stage、stage 边界通信 |
+| EP 从 1 增到多卡 | 每卡保存更少 expert | 小 batch 时 all-to-all 开销可能明显 | Token 足够多且 expert 均衡时可并行更多 expert | 每个 MoE layer 的 dispatch/combine 与热点 expert |
+
+并行扩展有时会出现“看起来超过卡数倍数”的 throughput 增长，但这不表示第二张 GPU 凭空提供了超过一张卡的计算能力。一个具体的官方案例是：vLLM 0.7.0、Llama 3.1 70B FP8、输入 1,024 Token、输出 128 Token 时，单张 H100 只能留下 923 个 GPU KV block，而 TP=2 后增加到 12,830 个；总吞吐从 2,282 增到 8,967 token/s。原因是单卡配置的权重几乎占满显存，KV cache 才是主要限制；第二张卡不仅增加计算，还释放了大量 KV cache 空间。下图及数据来自 [vLLM《Distributed Inference and Serving》](https://vllm.ai/blog/2025-02-17-distributed-inference)。这个结果不能外推为“TP=2 永远有 3.9 倍吞吐”。
+
+![vLLM 官方案例：TP 增加后，空出的 KV cache 容量改变了可支持并发和吞吐](https://vllm.ai/blog-assets/figures/distributed-inference/kv_cache_effects.png)
+
+### 三种具体机器应该怎样选
 
 **两张 RTX 5090，主板将每张卡协商为 PCIe 5.0 x8。** [PCI-SIG 给出的](https://pcisig.com/sites/default/files/files/PCI-SIG-Seamless_Transition_to_PCIe_5.0_in_System_Implementations_FINAL.pdf) PCIe 5.0 x8 单向理论 payload 带宽约为 31.5GB/s；实际带宽更低。RTX 5090 官方规格为 32GB GDDR7，并明确不支持 NVLink。
 
@@ -600,7 +723,7 @@ Token 数 M × top-k × hidden size H × 每元素 bytes
 - 如果服务器有 NVSwitch，使八张 GPU 之间都显示高速 `NV#`，TP/EP 可以跨更大的 GPU group；如果只有部分 GPU 直连 NVLink，group 应按实际 NVLink clique 划分。
 - 进程的 CPU 核、系统内存和 NIC 也要绑定到相应 NUMA 域。否则数据可能先跨 CPU socket，再进入本地 GPU 或 NIC。
 
-#### 先查看拓扑，再决定并行方式
+### 先查看拓扑，再决定并行方式
 
 NVIDIA 驱动提供以下检查：
 
@@ -611,6 +734,22 @@ nvidia-smi topo -p2p n      # NVLink P2P 能力
 nvidia-smi topo -cpu        # GPU 对应的 CPU 和内存 NUMA affinity
 nvidia-smi nvlink -s        # NVLink 是否 active，以及驱动报告的链路带宽
 ```
+
+下面是一台真实的双路 CPU、8×RTX 6000 Ada 服务器的 `nvidia-smi topo -m` 摘要。GPU 0～3 绑定 NUMA 0，GPU 4～7 绑定 NUMA 1；同一组内主要是 `PIX` 或 `NODE`，跨组全部是 `SYS`。原始输出来自 [NVIDIA Developer Forums 上的 Supermicro 421GE-TNRT 案例](https://forums.developer.nvidia.com/t/how-to-change-gpu-topology/285050)。为了便于阅读，下面省略了 NIC 列，但没有改变 GPU 间路径标记。
+
+```text
+        GPU0 GPU1 GPU2 GPU3 GPU4 GPU5 GPU6 GPU7 CPU Affinity   NUMA
+GPU0     X   NODE NODE NODE SYS  SYS  SYS  SYS  0-35,72-107    0
+GPU1    NODE  X   PIX  PIX  SYS  SYS  SYS  SYS  0-35,72-107    0
+GPU2    NODE PIX   X   PIX  SYS  SYS  SYS  SYS  0-35,72-107    0
+GPU3    NODE PIX  PIX   X   SYS  SYS  SYS  SYS  0-35,72-107    0
+GPU4    SYS  SYS  SYS  SYS   X   PIX NODE NODE 36-71,108-143  1
+GPU5    SYS  SYS  SYS  SYS  PIX   X  NODE NODE 36-71,108-143  1
+GPU6    SYS  SYS  SYS  SYS  NODE NODE  X   PIX 36-71,108-143  1
+GPU7    SYS  SYS  SYS  SYS  NODE NODE PIX   X  36-71,108-143  1
+```
+
+这个输出直接说明为什么不应随意选择 `TP=8`：它会让逐层 collective 反复跨过两个 CPU socket。若模型能在四张卡中装下，可以建立两个 `TP=4` 的 DP replica；若一个 replica 必须使用八张卡，可以先测试 NUMA 域内 `TP=4`、跨域 `PP=2`。如果另一台服务器的矩阵在所有 GPU 对之间都显示 `NV#`，结论会不同，必须按那台机器的拓扑重新分组。
 
 拓扑矩阵中的常见标记为：
 
@@ -627,7 +766,7 @@ nvidia-smi nvlink -s        # NVLink 是否 active，以及驱动报告的链路
 
 ---
 
-## 第五部分：如何选择模型
+## 第六部分：如何选择模型
 
 ### 先确定能运行的候选范围
 
@@ -729,7 +868,7 @@ Apache-2.0、MIT 和各类自定义 community license 的义务不同，应阅�
 
 ---
 
-## 第六部分：部署方法
+## 第七部分：部署方法
 
 ### 路线 A：LM Studio
 
@@ -840,7 +979,9 @@ Intel 硬件应测试 OpenVINO 的官方执行路径。ONNX Runtime 仍是通用
 
 ---
 
-## 第七部分：vLLM、PagedAttention 与高并发
+## 第八部分：vLLM、PagedAttention 与高并发
+
+### PagedAttention 怎样管理 KV block
 
 传统做法常为每个请求预留一块连续的最大 KV cache。
 
@@ -865,6 +1006,10 @@ PagedAttention 使用与操作系统虚拟内存相似的 block 映射：
 ```
 
 PagedAttention 不改变模型的 attention 定义。它改变 KV cache 的物理存储和地址映射，使内存按 block 分配，并把浪费主要限制在每个序列最后一个未填满的 block。可用显存因此可以容纳更多活跃序列，提高 continuous batch 的大小和总 throughput。
+
+下面这张 vLLM 官方图把请求调度和 KV block 放在了一起：三个不同长度的请求被压成一次没有右侧 padding 的 token sequence；CPU 端的 block table 决定每个逻辑 block 对应 GPU 上的哪个物理 KV block；后续 Decode 只追加新 Token，并通过 `slot_mapping` 写入对应位置。图中每个 sequence 的历史 KV 不需要在显存中连续。图来自 [vLLM《Anatomy of vLLM》](https://vllm.ai/blog/2025-09-05-anatomy-of-vllm)。
+
+![vLLM 官方 forward-pass 图：continuous batching、block table、PagedAttention 与 Decode 写入位置](https://vllm.ai/blog-assets/figures/2025-vllm-anatomy/fwd_pass.png)
 
 ### Continuous Batching 到底调度什么
 
@@ -943,7 +1088,7 @@ vLLM 原始 [PagedAttention 论文](https://arxiv.org/abs/2309.06180)在论文�
 
 ---
 
-## 第八部分：怎样提高 KV cache 命中率
+## 第九部分：怎样提高 KV cache 命中率
 
 Prefix cache 的命中条件是完全一致的 Token 前缀。可以采用以下配置提高命中率：
 
@@ -979,7 +1124,116 @@ Prefix cache 的命中条件是完全一致的 Token 前缀。可以采用以下
 
 ---
 
-## 第九部分：三套实际方案
+## 第十部分：本地推理的三年成本怎样计算
+
+本地推理是否省钱，不能只比较显卡价格和 API 的每百万 Token 单价。至少要同时计算硬件折旧、电力、实际产出的 Token，以及这些 Token 如果改用 API 会产生多少费用。
+
+### 先把成本和产出写成公式
+
+先定义：
+
+- `C_buy`：整机购置价；
+- `C_resale`：三年后的残值；
+- `P_idle`：开机但没有生成 Token 时的整机墙上功耗；
+- `P_load`：持续推理时的整机墙上功耗；
+- `u`：三年中真正以实测速度生产 Token 的时间比例；
+- `R`：忙碌时的持续 output token/s；
+- `p_e`：电价，单位为美元/kWh；
+- `H = 3 × 365 × 24 = 26,280` 小时。
+
+这里的 `u` 不是 `nvidia-smi` 显示的瞬时 GPU utilization。`u=20%` 表示在三年总时间中，有 20% 的时间能持续达到用于计算的 `R`；排队为空、模型加载、故障和维护时间都不能算入这 20%。
+
+```text
+三年折旧 = C_buy - C_resale
+
+平均墙上功耗 = P_idle + u × (P_load - P_idle)
+三年用电量 = 平均墙上功耗(kW) × 26,280h
+三年电费 = 三年用电量 × p_e
+
+三年 output Token = R × 26,280 × 3,600 × u
+本地总成本 = 三年折旧 + 三年电费
+本地每百万 output Token 成本 = 本地总成本 ÷ (三年 output Token / 1,000,000)
+```
+
+这组公式假设机器三年始终开机。如果空闲时会关机，应把关机时间和功耗单独列出。机房还需要用 PUE 修正制冷和配电：`设施总用电 = IT 用电 × PUE`。下面的桌面工作站例子取 `PUE=1`，不计额外空调。
+
+### 完整例子：一台 4,000 美元的 RTX 5090 工作站
+
+下面不是某个模型的 benchmark，也不是对二手价格的预测，只是一组完整的计算输入：
+
+| 输入 | 假设值 |
+|---|---:|
+| 整机购置价 | $4,000 |
+| 三年后残值 | $1,600，即购置价的 40% |
+| 三年折旧 | $2,400 |
+| 空闲墙上功耗 | 100W |
+| 推理墙上功耗 | 650W |
+| 忙碌时持续输出速度 | 100 output token/s |
+| 电价 | $0.18/kWh |
+| PUE | 1.0 |
+
+电价使用美国能源信息署（EIA）截至 2026 年 6 月的全美居民用电年内平均值 18.16 美分/kWh，并四舍五入为 18 美分。美国不同州、商业用电和分时电价可能相差很大，实际计算应替换为电费账单中的边际电价。来源：[EIA Electric Power Monthly, Table 5.6.B](https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=table_es1b)。
+
+三档占用率的计算结果如下：
+
+| 持续占用率 `u` | 平均功耗 | 三年用电量 | 三年电费 | 三年 output Token | 折旧 + 电费 | 本地 $/百万 output Token |
+|---:|---:|---:|---:|---:|---:|---:|
+| 20% | 210W | 5,519kWh | $993 | 18.92 亿 | $3,393 | $1.79 |
+| 50% | 375W | 9,855kWh | $1,774 | 47.30 亿 | $4,174 | $0.88 |
+| 80% | 540W | 14,191kWh | $2,554 | 75.69 亿 | $4,954 | $0.65 |
+
+以 20% 为例：
+
+```text
+平均功耗 = 100W + 20% × (650W - 100W) = 210W
+电费 = 0.210kW × 26,280h × $0.18/kWh = $993.38
+Token = 100 token/s × 26,280h × 3,600s/h × 20%
+      = 1,892,160,000 output Token
+本地成本 = $2,400 + $993.38 = $3,393.38
+每百万 Token 成本 = $3,393.38 ÷ 1,892.16 = $1.79
+```
+
+如果只比较 output Token，并假设 API 输出价格分别为 $1、$5 和 $10/百万 Token，则三年 API 等价价值和本地节省额为：
+
+| 持续占用率 | $1/M API 价值 | 相对本地节省 | $5/M API 价值 | 相对本地节省 | $10/M API 价值 | 相对本地节省 |
+|---:|---:|---:|---:|---:|---:|---:|
+| 20% | $1,892 | -$1,501 | $9,461 | $6,067 | $18,922 | $15,528 |
+| 50% | $4,730 | $557 | $23,652 | $19,478 | $47,304 | $43,130 |
+| 80% | $7,569 | $2,614 | $37,843 | $32,889 | $75,686 | $70,732 |
+
+负数表示本地机器更贵。在这组假设下，三年本地总成本可以写成：
+
+```text
+本地总成本 = $2,873.04 + $2,601.72 × u
+产出（百万 Token）= 9,460.8 × u
+```
+
+因此只按 output Token 比较时，API 为 $1/M、$5/M、$10/M 的收支平衡占用率分别约为 41.9%、6.4% 和 3.1%。价格越高，达到收支平衡所需的本地占用率越低；但这仍然没有说明本地模型与 API 模型具有相同的任务成功率。
+
+### 怎样换成自己的硬件和 API 价格
+
+实际决策时至少替换以下数据：
+
+1. 用墙插功率计记录整机的 `P_idle` 和目标并发下的 `P_load`，不要只使用显卡 TDP；
+2. 用自己的 prompt/output 长度、并发和量化测持续 output token/s；单用户峰值 token/s 不能代替服务器长期吞吐；
+3. 按实际开机时间计算 `u`，并把模型切换、重启、故障和没有请求的时间排除；
+4. 残值分别按购置价的 20%、40%、60% 做敏感性分析；
+5. 企业部署加入保修、硬盘、网络、机架、制冷、维护人力、融资和备用容量；
+6. 用同一批 private benchmark 比较任务成功率。本地模型如果需要更多重试或生成更长的 reasoning trajectory，等量 Token 并不等价。
+
+真实 API 账单通常还要区分输入、缓存输入和输出：
+
+```text
+API 等价成本 = 非缓存输入 Token / 1M × 输入价格
+             + 缓存输入 Token / 1M × 缓存输入价格
+             + 输出 Token / 1M × 输出价格
+```
+
+上表故意只计算 output Token，所以它更接近“持续生成服务”的简化比较。长文档 Prefill 很多、缓存命中率很高或 reasoning 输出很长时，应分别带入三类 Token。隐私、离线可用性和数据驻留也可能是本地部署的独立价值，但不要把这些价值伪装成已经节省的现金。
+
+---
+
+## 第十一部分：三套实际方案
 
 ### 方案一：我只想在自己的电脑上聊天
 
@@ -1059,8 +1313,11 @@ Prefix cache 的命中条件是完全一致的 Token 前缀。可以采用以下
 - H200：[NVIDIA 官方规格](https://www.nvidia.com/en-us/data-center/h200/)
 - PagedAttention：[论文](https://arxiv.org/abs/2309.06180)与 [vLLM 介绍](https://vllm.ai/blog/2023-06-20-vllm)
 - vLLM scheduler 与 chunked prefill：[SchedulerConfig](https://docs.vllm.ai/en/latest/api/vllm/config/scheduler/)与[优化说明](https://docs.vllm.ai/en/latest/configuration/optimization/)
-- vLLM 多 GPU 与多机并行：[Parallelism and Scaling](https://docs.vllm.ai/en/latest/serving/parallelism_scaling/)
+- vLLM 的 engine、scheduler 与 KV block 可视化：[Anatomy of vLLM](https://vllm.ai/blog/2025-09-05-anatomy-of-vllm)
+- vLLM 多 GPU 与多机并行：[Parallelism and Scaling](https://docs.vllm.ai/en/latest/serving/parallelism_scaling/)、[Distributed Inference and Serving](https://vllm.ai/blog/2025-02-17-distributed-inference)与[当前 serve 参数](https://docs.vllm.ai/en/latest/cli/serve/)
+- vLLM data parallel：[Data Parallel Deployment](https://docs.vllm.ai/en/stable/serving/data_parallel_deployment/)
 - NVIDIA GPU/NIC/NUMA 拓扑：[nvidia-smi 文档](https://docs.nvidia.com/deploy/nvidia-smi/index.html)
+- 双路 CPU、8 GPU 拓扑实机输出：[NVIDIA Developer Forums 案例](https://forums.developer.nvidia.com/t/how-to-change-gpu-topology/285050)
 - DGX Spark 多机互联：[硬件规格](https://docs.nvidia.com/dgx/dgx-spark/hardware.html)与 [ConnectX-7 配置](https://docs.nvidia.com/dgx/dgx-spark/spark-clustering.html)
 - 双 DGX Spark 的 vLLM 配置：[NVIDIA 官方流程](https://build.nvidia.com/spark/vllm/multi-node)
 - NVIDIA collective 通信实测：[nccl-tests](https://github.com/NVIDIA/nccl-tests)
@@ -1073,6 +1330,8 @@ Prefix cache 的命中条件是完全一致的 Token 前缀。可以采用以下
 - NVIDIA NVFP4：[Transformer Engine 文档](https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/features/low_precision_training/nvfp4/nvfp4.html)
 - NVIDIA 各精度 GEMM 实测说明：[Transformer Engine Speedups](https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/features/low_precision_training/speedups.html)
 - AMD CDNA4：[架构说明](https://www.amd.com/en/technologies/cdna.html)
+- Intel Crescent Island：[2025 年公布的客户采样计划](https://newsroom.intel.com/artificial-intelligence/intel-to-expand-ai-accelerator-portfolio-with-new-gpu)与 [Hot Chips 2026 规格更新](https://newsroom.intel.com/client-computing/intel-outlines-architectures-for-agentic-ai-at-hot-chips-2026)
+- 美国居民平均电价：[EIA Electric Power Monthly, Table 5.6.B](https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=table_es1b)
 - Artificial Analysis：[模型比较](https://artificialanalysis.ai/models/)与[方法](https://artificialanalysis.ai/methodology)
 - 人类成对偏好评测：[Chatbot Arena 论文](https://arxiv.org/abs/2403.04132)
 - 降低公开测试集污染：[LiveBench](https://arxiv.org/abs/2406.19314)
