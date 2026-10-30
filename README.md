@@ -1,5 +1,7 @@
 # 本地部署大语言模型的中文教学
 
+> 🌏 **English readers:** this guide is also available in English. The [English edition (README.en.md)](README.en.md) is a full translation of this page, with the same sections, examples, numbers and images, so you only need to read one version. 本页是中文原版；英文版在 [README.en.md](README.en.md)。
+
 > 最后一次大修：2026 年 10 月
 > 具体型号、价格和命令变得很快，所以我会尽量把“为什么”讲清楚。这样就算哪天型号过时了，你也知道该怎么自己判断。
 
