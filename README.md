@@ -37,7 +37,7 @@ Hello！大家好，这里是 Anser！
 | 🧐 **已经跑起来了，想知道为什么快或慢、该换哪个模型** | [第三部分](#第三部分为什么有时快有时慢) → [第四部分](#第四部分怎么挑一个模型) → [常见误区](#常见误区) |
 | 🛒 **准备买或者升级硬件** | [第 0 步](#第-0-步先看看你的电脑) → [第三部分](#第三部分为什么有时快有时慢) → [第六部分](#第六部分要不要升级硬件)，想算账再看[第十三部分](#第十三部分本地部署到底省不省钱) |
 | 🏢 **要给团队或公司部署一个大家共用的模型** | 先快速过一遍[第二部分](#第二部分刚才到底发生了什么)和[第三部分](#第三部分为什么有时快有时慢)，然后读[第七部分](#第七部分更多部署工具) → [第八部分](#第八部分给很多人用vllm-与高并发) → [第九部分](#第九部分多-gpu多机与并行方法) → [第十部分](#第十部分认真评测和比较模型) |
-| 🔬 **就是好奇，想把原理搞明白** | 新手部分读完后，看[第十一部分](#第十一部分精度与量化)和[第十二部分](#第十二部分速度上限的数学与-speculative-decoding) |
+| 🔬 **就是好奇，想把原理搞明白** | 新手部分读完后，看[第十一部分](#第十一部分精度与量化)、[第十二部分](#第十二部分速度上限的数学与-speculative-decoding)和[第十四部分](#第十四部分多模态让模型看图听声音) |
 
 文中会用三种小标记告诉你某一段是写给谁的：
 
@@ -71,6 +71,7 @@ Hello！大家好，这里是 Anser！
 - [第十一部分：精度与量化](#第十一部分精度与量化)
 - [第十二部分：速度上限的数学与 speculative decoding](#第十二部分速度上限的数学与-speculative-decoding)
 - [第十三部分：本地部署到底省不省钱？](#第十三部分本地部署到底省不省钱)
+- [第十四部分：多模态：让模型看图、听声音](#第十四部分多模态让模型看图听声音)
 
 **📚 收尾**
 
@@ -1770,6 +1771,155 @@ API 等价成本 = 非缓存输入 Token / 1M × 输入价格
 
 ---
 
+## 第十四部分：多模态：让模型看图、听声音
+
+> 🔬 原理深入。只想用的话，记住三件事就够了：图片和音频也要变成 Token、会占上下文；本地跑视觉模型通常要多下载一个 `mmproj` 文件；目前大多数开源模型只能**输出文字**。剩下的内容写给想知道“模型到底怎么看见一张图”的你。
+
+前面整篇教程都在讲同一件事：模型读入一串 Token，每次预测下一个 Token。那它怎么读一张照片、一段录音，甚至一段视频？
+
+### 多模态是什么
+
+**模态（modality）** 指信息的种类：文字、图片、音频、视频都是不同的模态。只能处理文字的模型是单模态的；能同时处理几种模态的模型叫**多模态模型（multimodal model）**。本地最常见的是**视觉语言模型（VLM，vision language model）**：输入图片和文字，输出文字。
+
+大众第一次大规模感受到多模态，是 2023 年 3 月 OpenAI 发布的 GPT-4：它的技术报告展示了看图回答问题，不过看图功能到同年 9 月才以 GPT-4V 的名义开放给用户。2024 年 5 月的 GPT-4o 更进一步，同一个模型直接听和说，不再是“语音转文字、文字转语音”的拼接。
+
+但多模态的研究比 GPT-4 早不少：2021 年 OpenAI 的 [CLIP](https://arxiv.org/abs/2103.00020) 让图片和文字学会了互相对应，2022 年 DeepMind 的 [Flamingo](https://arxiv.org/abs/2204.14198) 已经能看图对话。开源这边，2023 年 4 月的 [LLaVA](https://arxiv.org/abs/2304.08485) 用一个很简单的结构把开源 VLM 带火了，今天大多数开源 VLM 仍然沿用它的思路。
+
+### 核心思路：把图片也变成“Token”
+
+[第二部分](#模型怎样生成文字一次预测一个-token)讲过，文字进入模型的第一步，是把每个 Token ID 换成一个向量（embedding）。之后的几十层 Transformer 其实**只认向量，不认文字**。
+
+所以多模态的关键很简单：**只要能把一张图变成一串和文字 embedding 同样长度的向量，就可以把它们直接插进文字中间，交给同一个语言模型处理。** 这些向量不对应词表里的任何 Token，所以也常被叫作“软 Token”（soft token）或“图像 Token”。
+
+一次看图问答，输入序列大概长这样：
+
+```text
+<用户> [图像向量 1] [图像向量 2] ... [图像向量 576] 这张图里有几只猫？ <助手>
+```
+
+模型对这串向量做的事情和纯文字时完全一样：attention、MLP、最后预测下一个**文字** Token。图片只是“读题”时多出来的一段输入。
+
+### Vision Transformer：把图片切成小方块
+
+怎样把图片变成向量？最常用的是 **Vision Transformer（ViT）**，出自 2020 年的论文 [An Image is Worth 16x16 Words](https://arxiv.org/abs/2010.11929)。它的做法是：
+
+1. 把图片切成固定大小的小方块（**patch**），比如每块 14×14 或 16×16 像素；
+2. 把每个 patch 的所有像素值排成一长串数字，用一次矩阵乘法变成一个向量。这一步相当于文字的 embedding；
+3. 加上**位置信息**，告诉模型每个 patch 在图里的第几行、第几列；
+4. 让这些 patch 向量通过几十层 Transformer。和语言模型不同，这里的 attention 通常是**双向**的：每个 patch 都能看到图里所有其他 patch，不需要“只看前面”。
+
+经过这些层后，每个 patch 的向量就不只是“这一块是什么颜色”，而是包含了“这里是一只猫的耳朵”这类和整张图有关的信息。
+
+### Vision encoder 和 projector：VLM 的三个部件
+
+**Vision encoder（视觉编码器）** 就是负责“把图片变成一串向量”的那部分网络，绝大多数时候它就是一个 ViT，而且通常事先单独训练过。常见的是 CLIP 或 Google 的 SigLIP 这类用海量“图片 + 描述”对训练出来的 ViT，它们输出的向量已经和语言意义对齐。
+
+一个典型的 LLaVA 式 VLM 由三部分组成：
+
+| 部件 | 作用 | 常见大小 |
+|---|---|---|
+| Vision encoder | 把图片切成 patch，用 ViT 算出每个 patch 的向量 | 几亿参数 |
+| Projector（投影层） | 把 encoder 输出的向量转换成语言模型的 embedding 长度，有时顺便合并相邻 patch 以减少 Token 数 | 很小，一两层矩阵乘法 |
+| 语言模型 | 和纯文字模型一样，逐个生成文字 Token | 几十亿到几千亿参数 |
+
+数据流是这样的：
+
+```text
+图片 → 切成 patch → Vision encoder（ViT，几十层）→ Projector → 图像向量
+                                                                 ↓
+文字 → tokenizer → embedding ──────────────────────────→ 拼成一个序列 → 语言模型 → 文字
+```
+
+以 [LLaVA-1.5](https://arxiv.org/abs/2310.03744) 为例：图片先缩放到 336×336，按 14×14 的 patch 切成 24×24 = **576 个 patch**，每个 patch 最后变成一个图像向量。也就是说，**一张图占了 576 个 Token 的上下文**，比很多问题本身都长。
+
+训练时一般分两步：先冻结 encoder 和语言模型，只训练 projector，让两边“对上号”；再用图文对话数据一起微调。
+
+另一种接法是不把图像向量插进序列，而是在语言模型里额外加一些 **cross-attention** 层，让文字去“查询”图像特征。Flamingo 和 Meta 的 Llama 3.2 Vision 用的就是这种方式。今天开源模型里更常见的还是上面“插进序列”的方式。
+
+### 多张图、视频和音频
+
+想通了“图片就是一段向量”，其他输入就顺理成章了：
+
+- **多张图**：每张图各自变成一段向量，按顺序插进对话里就行。
+- **视频**：正如你猜的，视频基本就是**按时间排好的多张图**。常见做法是每秒抽 1 帧，每帧当成一张图，有时再把相邻帧合并以节省 Token。有声音的视频，再把对应的音频也放进去。
+- **音频**：把声音按时间切成小段（比如每 40 毫秒一段），用一个 **audio encoder** 把每段变成向量，再像图片一样插进序列。很多 audio encoder 先把波形转成 Mel 频谱（一种表示“每个时刻各频率有多响”的图），再用卷积和 Transformer 处理。
+
+这样带来的直接后果是：**多模态输入非常吃上下文和 Prefill 计算**。一分钟视频按每秒 1 帧、每帧 70 个 Token 算，就是 60 × 70 = **4200 个 Token**；如果每帧给到 280 个 Token，就是 16,800 个。这些 Token 和文字一样要算 Prefill、占 KV cache，所以[第三部分](#prefill-和-decode)讲的“读题慢”在多模态里会更明显。
+
+### 在本地跑视觉模型要注意什么
+
+- **llama.cpp、LM Studio 和 Ollama 都支持不少视觉模型。** 在 Hugging Face 的 GGUF 仓库里，除了模型本体，通常还有一个名字带 `mmproj` 的文件，它就是 vision encoder 加 projector。llama.cpp 需要用 `--mmproj` 同时加载它，LM Studio 和 Ollama 一般会自动处理。只下载了模型本体时，模型会正常聊天，但“看不见”图片。
+- **不同程序支持的模态不一样。** 同一个模型，有的程序只支持图片，不支持音频或视频，用之前查一下程序的文档。
+- **图片分辨率会影响 Token 数。** 很多新模型允许选择每张图的 Token 预算：看文档、截图里的小字时给多一点，只问“图里有什么”时给少一点，速度会快很多。
+- **vision encoder 本身也占内存，而且通常不建议量化得太狠。** 估算内存时，把 `mmproj` 文件的大小也算进去。
+
+### 新方向：Gemma 4 12B 的“统一”架构
+
+Google 在 2026 年发布的 Gemma 4 系列里，不同尺寸用了两种不同的多模态结构，正好可以拿来对比（以下数字来自 [Gemma 4 技术报告](https://arxiv.org/abs/2607.02770)、[开发者指南](https://developers.googleblog.com/gemma-4-12b-the-developer-guide/) 和 [Hugging Face 介绍](https://huggingface.co/blog/gemma4)）：
+
+| 模型 | 看图 | 听声音 |
+|---|---|---|
+| E2B、E4B（端侧小模型） | 约 1.5 亿参数的 ViT encoder（16 层） | 约 3 亿参数的 USM 式 audio encoder（2 层卷积 + 12 层 Conformer） |
+| 26B-A4B（MoE）、31B | 约 5.5 亿参数的 ViT encoder（27 层） | 不支持音频输入 |
+| **12B** | **没有 vision encoder**，只有约 3500 万参数的轻量 embedding 模块 | **没有 audio encoder**，直接线性投影 |
+
+Google 把 12B 叫作“统一（unified）、无编码器（encoder-free）”的模型。它和传统 VLM 的差别在于：
+
+- **图片**：把原始图片切成 48×48 像素的 patch，每个 patch 的像素值**只做一次矩阵乘法**，直接变成语言模型 embedding 长度的向量，再加上按行、列分开查表得到的位置信息和归一化。没有那 27 层 ViT。
+- **音频**：把 16 kHz 的原始波形切成 40 毫秒一段，每段正好 640 个采样点，也是**一次线性投影**就进入语言模型。没有 Mel 频谱，也没有 Conformer。
+- **之后的所有工作都交给语言模型本身**：文字、图片、音频的向量进入同一个 48 层的 decoder-only Transformer，用的是同一套权重。原本由 ViT 完成的“理解这块像素是什么”，现在要由语言模型的层自己学会。
+
+两种结构的数据流对比：
+
+```text
+传统（Gemma 4 31B）：  图片 → 16×16 patch → ViT（27 层，约 5.5 亿参数）→ projector → 语言模型
+统一（Gemma 4 12B）：  图片 → 48×48 patch → 一次矩阵乘法 + 位置信息 ───────────────→ 语言模型
+                       音频 → 40ms 原始波形 → 一次线性投影 ──────────────────────→ 语言模型
+```
+
+为什么要这样做？Google 给出的理由是：串联几个独立 encoder 会**增加延迟，也让内存占用变得零散**；去掉 encoder 后，部署更简单，微调时整条多模态路径会一起更新，不会出现“encoder 冻结、语言模型在变”的错位。代价是这个模型必须**从头**用多模态数据预训练（技术报告说 12B 是“trained from scratch”），不能像 LLaVA 那样直接接上一个现成的 CLIP/SigLIP。
+
+这个想法也不完全是新的：2023 年 Adept 的 [Fuyu-8B](https://www.adept.ai/blog/fuyu-8b) 就已经把图片 patch 直接线性投影进语言模型。Gemma 4 12B 是把同一思路推广到了音频，并且做到了接近更大模型的效果。
+
+关于本地运行：模型卡写明 12B 支持图片、最长 30 秒的音频和最长 60 秒的视频（每秒 1 帧），上下文 256K，输出只有文字。它的结构和其他多模态模型不同，所以请先确认你用的程序已经支持这个具体模型，再下载。
+
+### 模型怎样“说话”：输出音频
+
+先纠正一个常见印象：**Gemma 4 的所有型号都只能输出文字。** Google 的 [Hugging Face 介绍](https://huggingface.co/blog/gemma4)写的是“支持图片、文字和音频输入，生成文字回答”，[12B 模型卡](https://huggingface.co/google/gemma-4-12B-it)的输出模态也只写了文字。Gemma 4 的音频能力是“听”：语音识别、语音翻译，而不是“说”。能直接说话的是 Google 的闭源 Gemini 等产品，Gemma 本身没有官方的语音输出。
+
+不过“让语言模型说话”的方法已经很成熟，主要有两种：
+
+**1. 拼接（cascade）**：语言模型先输出文字，再交给一个独立的 TTS（文字转语音）模型读出来。简单可靠，本地很容易搭，缺点是延迟更高，语气、情绪这些信息在“只传文字”时会丢失。
+
+**2. 让模型直接输出“声音 Token”**：这需要一个**神经音频编解码器（neural audio codec）**。它的编码器把一段波形压缩成很少的离散编号，解码器能把这些编号还原成波形。例如 Kyutai 的 Mimi codec 每秒 12.5 帧，每帧 8 个编号。这样一来，声音也变成了“从一张固定词表里选编号”，和预测下一个文字 Token 是同一类问题。
+
+目前开源的端到端语音模型大多采用 **Thinker-Talker** 结构，代表是阿里的 [Qwen2.5-Omni](https://arxiv.org/abs/2503.20215) 和后来的 [Qwen3.5-Omni](https://arxiv.org/abs/2604.15804)：
+
+```text
+图片/音频/视频/文字 → 各自的 encoder → Thinker（大语言模型）→ 文字 Token
+                                            │
+                                            └─ 隐藏状态 → Talker（较小的自回归模型）→ 声音 codec Token → codec 解码器 → 波形
+```
+
+- **Thinker** 就是一个普通的多模态语言模型，负责理解和“想说什么”，输出文字；
+- **Talker** 读取 Thinker 中间层的**隐藏状态**（不只是最终的文字），逐个生成声音 codec Token。因为它能看到隐藏状态，语气和节奏可以和内容配合；
+- **codec 解码器**把声音 Token 还原成可以播放的波形，并且边生成边播放（streaming）。
+
+有开发者在 Gemma 4 E4B 上做过一个[非官方实验](https://www.frisson-labs.com/gemma4-e4b-architecture)，可以清楚看到数据怎样流过各部分：音频经 audio encoder 变成向量，进入冻结的 42 层 decoder；从最后约 6 层取出隐藏状态，送进一个约 1.5 亿参数、自己训练的“语音头”，预测 Mimi codec 编号；最后由冻结的 Mimi 解码器生成 24 kHz 波形。作者自己说明这只是用 128 条样本做的结构验证，不是可用的 TTS，但它的结构和 Talker 基本一致。
+
+### 未来可能的变化
+
+下面是正在发生、但还没有定论的几个方向：
+
+- **去掉 encoder**：Gemma 4 12B 证明了无 encoder 结构在中等尺寸上可行。它会不会成为主流，还要看更大模型和更多厂商的结果。
+- **原生多模态预训练**：从第一天起就用文字、图片、音频混合训练，而不是“先训练文字模型，再接一个 encoder”。
+- **任意模态输出（any-to-any）**：同一个模型不仅输出文字，也直接输出语音甚至图片。Meta 的 [Chameleon](https://arxiv.org/abs/2405.09818) 把图片也切成离散 Token，用同一个模型生成文字和图片。
+- **更省 Token 的视觉表示**：动态分辨率、可选 Token 预算、合并相邻帧，都是为了让图片和视频少占上下文。对本地部署来说，这一点直接决定了速度和内存。
+
+这些方向都在快速变化，具体型号也许几个月后就过时了。但“**所有模态最终都变成语言模型能读的一串向量**”这条主线，短期内应该不会变。
+
+---
+
 ## 常见误区
 
 > 🌱 这些都是我被问过很多次、或者自己踩过的坑。每一条都很短，强烈建议看一遍！
@@ -1805,6 +1955,10 @@ API 等价成本 = 非缓存输入 Token / 1M × 输入价格
 ### “开了 prefix caching，整段回答都不用算了”
 
 不会。Prefix caching 只跳过相同开头部分的“读题”计算；新生成的回答仍然要一个 Token 一个 Token 地算。
+
+### “图片不占上下文，随便塞几张没关系”
+
+不是。每张图都会变成几十到上千个 Token，和文字一样占上下文、算 Prefill；一分钟视频就可能是几千个 Token。详见[第十四部分](#多张图视频和音频)。
 
 ### “排行榜第一就是最适合我的”
 
@@ -1850,6 +2004,13 @@ API 等价成本 = 非缓存输入 Token / 1M × 输入价格
 - Reasoning 与 test-time compute：[OpenAI o1 说明](https://openai.com/index/learning-to-reason-with-llms/)
 - RL reasoning：[DeepSeek-R1 论文](https://arxiv.org/abs/2501.12948)
 - 非可验证写作任务的奖励设计：[Writing-Zero](https://arxiv.org/abs/2506.00103)
+- Vision Transformer：[An Image is Worth 16x16 Words](https://arxiv.org/abs/2010.11929)
+- 图文对齐与早期 VLM：[CLIP](https://arxiv.org/abs/2103.00020)、[Flamingo](https://arxiv.org/abs/2204.14198)、[LLaVA](https://arxiv.org/abs/2304.08485)与 [LLaVA-1.5](https://arxiv.org/abs/2310.03744)
+- 无编码器 VLM：[Fuyu-8B](https://www.adept.ai/blog/fuyu-8b)
+- Gemma 4：[技术报告](https://arxiv.org/abs/2607.02770)、[12B 开发者指南](https://developers.googleblog.com/gemma-4-12b-the-developer-guide/)、[Hugging Face 介绍](https://huggingface.co/blog/gemma4)与 [12B 模型卡](https://huggingface.co/google/gemma-4-12B-it)
+- 语音输出的 Thinker-Talker 结构：[Qwen2.5-Omni](https://arxiv.org/abs/2503.20215)与 [Qwen3.5-Omni](https://arxiv.org/abs/2604.15804)
+- 在 Gemma 4 E4B 上接语音头的非官方实验：[Frisson Labs](https://www.frisson-labs.com/gemma4-e4b-architecture)
+- 文字与图片统一生成：[Chameleon](https://arxiv.org/abs/2405.09818)
 - llama.cpp：[GitHub](https://github.com/ggml-org/llama.cpp)
 - vLLM：[文档](https://docs.vllm.ai/)
 - SGLang：[GitHub](https://github.com/sgl-project/sglang)
