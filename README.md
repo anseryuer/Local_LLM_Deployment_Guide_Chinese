@@ -597,6 +597,10 @@ KV cache 也要在 Decode 时读取，所以上下文很长时，每个 Token �
 
 但多模态的研究比 GPT-4 早不少：2021 年 OpenAI 的 [CLIP](https://arxiv.org/abs/2103.00020) 让图片和文字学会了互相对应，2022 年 DeepMind 的 [Flamingo](https://arxiv.org/abs/2204.14198) 已经能看图对话。开源这边，2023 年 4 月的 [LLaVA](https://arxiv.org/abs/2304.08485) 用一个很简单的结构把开源 VLM 带火了，今天大多数开源 VLM 仍然沿用它的思路。
 
+下图是 NVIDIA 总结的 VLM 常见用途：视频总结、图片分析、多模态对话和文档解析（来源：[NVIDIA 术语表：Vision Language Models](https://www.nvidia.com/en-us/glossary/vision-language-models/)）：
+
+![VLM 的常见用途（来源：NVIDIA）](https://www.nvidia.com/content/nvidiaGDC/us/en_US/glossary/vision-language-models/_jcr_content/root/responsivegrid/nv_container_copy/nv_image.coreimg.png/1758650173219/metropolis-iva-diagram-vlm-glossary-ces25-3576177-r1--1-.png)
+
 ### 核心思路：把图片也变成“Token”
 
 [第二部分](#模型怎样生成文字一次预测一个-token)讲过，文字进入模型的第一步，是把每个 Token ID 换成一个向量（embedding）。之后的几十层 Transformer 其实**只认向量，不认文字**。
@@ -634,6 +638,10 @@ KV cache 也要在 Decode 时读取，所以上下文很长时，每个 Token �
 | Projector（投影层） | 把 encoder 输出的向量转换成语言模型的 embedding 长度，有时顺便合并相邻 patch 以减少 Token 数 | 很小，一两层矩阵乘法 |
 | 语言模型 | 和纯文字模型一样，逐个生成文字 Token | 几十亿到几千亿参数 |
 
+NVIDIA 的这张图画的就是这三部分：vision encoder、projector 和 LLM（来源：[NVIDIA 术语表](https://www.nvidia.com/en-us/glossary/vision-language-models/)）：
+
+![VLM 常见的三部分结构（来源：NVIDIA）](https://www.nvidia.com/content/nvidiaGDC/us/en_US/glossary/vision-language-models/_jcr_content/root/responsivegrid/nv_container_copy_co_300503066/nv_image.coreimg.svg/1758650173905/vlm-architecture-diagram.svg)
+
 数据流是这样的：
 
 ```text
@@ -644,7 +652,9 @@ KV cache 也要在 Decode 时读取，所以上下文很长时，每个 Token �
 
 以 [LLaVA-1.5](https://arxiv.org/abs/2310.03744) 为例：图片先缩放到 336×336，按 14×14 的 patch 切成 24×24 = **576 个 patch**，每个 patch 最后变成一个图像向量。也就是说，**一张图占了 576 个 Token 的上下文**，比很多问题本身都长。
 
-训练时一般分两步：先冻结 encoder 和语言模型，只训练 projector，让两边“对上号”；再用图文对话数据一起微调。
+训练时一般分两步：先冻结 encoder 和语言模型，只训练 projector，让两边“对上号”；再用图文对话数据一起微调。NVIDIA 把它画成三个阶段：先预训练对齐三个部件，再做监督微调（SFT）学会回答问题，最后可选地用 PEFT（参数高效微调，例如 LoRA）适配自己的数据（来源：[NVIDIA 术语表](https://www.nvidia.com/en-us/glossary/vision-language-models/)）：
+
+![VLM 的分阶段训练（来源：NVIDIA）](https://www.nvidia.com/content/nvidiaGDC/us/en_US/glossary/vision-language-models/_jcr_content/root/responsivegrid/nv_container_copy_co_1755415045/nv_image.coreimg.svg/1758650174299/vlm-training-process-diagram.svg)
 
 另一种接法是不把图像向量插进序列，而是在语言模型里额外加一些 **cross-attention** 层，让文字去“查询”图像特征。Flamingo 和 Meta 的 Llama 3.2 Vision 用的就是这种方式。今天开源模型里更常见的还是上面“插进序列”的方式。
 
@@ -2010,6 +2020,7 @@ API 等价成本 = 非缓存输入 Token / 1M × 输入价格
 - 非可验证写作任务的奖励设计：[Writing-Zero](https://arxiv.org/abs/2506.00103)
 - Vision Transformer：[An Image is Worth 16x16 Words](https://arxiv.org/abs/2010.11929)
 - 图文对齐与早期 VLM：[CLIP](https://arxiv.org/abs/2103.00020)、[Flamingo](https://arxiv.org/abs/2204.14198)、[LLaVA](https://arxiv.org/abs/2304.08485)与 [LLaVA-1.5](https://arxiv.org/abs/2310.03744)
+- VLM 用途、三部分结构与训练阶段示意图：[NVIDIA 术语表：Vision Language Models](https://www.nvidia.com/en-us/glossary/vision-language-models/)
 - 无编码器 VLM：[Fuyu-8B](https://www.adept.ai/blog/fuyu-8b)
 - Gemma 4：[技术报告](https://arxiv.org/abs/2607.02770)、[12B 开发者指南](https://developers.googleblog.com/gemma-4-12b-the-developer-guide/)、[Hugging Face 介绍](https://huggingface.co/blog/gemma4)与 [12B 模型卡](https://huggingface.co/google/gemma-4-12B-it)
 - 语音输出的 Thinker-Talker 结构：[Qwen2.5-Omni](https://arxiv.org/abs/2503.20215)与 [Qwen3.5-Omni](https://arxiv.org/abs/2604.15804)

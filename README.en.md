@@ -596,6 +596,10 @@ Most people first met multimodal AI at scale with OpenAI's GPT-4 in March 2023. 
 
 The research started well before GPT-4, though. OpenAI's [CLIP](https://arxiv.org/abs/2103.00020) taught images and text to match each other in 2021, and DeepMind's [Flamingo](https://arxiv.org/abs/2204.14198) could already chat about images in 2022. On the open side, [LLaVA](https://arxiv.org/abs/2304.08485) in April 2023 made open VLMs take off with a very simple design, and most open VLMs today still follow its approach.
 
+The figure below is NVIDIA's summary of common VLM uses: video summarization, image analysis, multimodal chat and document parsing (source: [NVIDIA glossary: Vision Language Models](https://www.nvidia.com/en-us/glossary/vision-language-models/)):
+
+![Common uses of VLMs (source: NVIDIA)](https://www.nvidia.com/content/nvidiaGDC/us/en_US/glossary/vision-language-models/_jcr_content/root/responsivegrid/nv_container_copy/nv_image.coreimg.png/1758650173219/metropolis-iva-diagram-vlm-glossary-ces25-3576177-r1--1-.png)
+
 ### The core idea: turn images into "tokens" too
 
 [Part 2](#how-a-model-generates-text-one-token-at-a-time) explained that the first thing that happens to text inside a model is that each token ID is replaced by a vector (an embedding). The dozens of Transformer layers after that **only understand vectors, not text**.
@@ -633,6 +637,10 @@ A typical LLaVA-style VLM has three parts:
 | Projector | Converts the encoder's vectors to the language model's embedding length, sometimes also merging neighbouring patches to cut the token count | Tiny, one or two matrix multiplications |
 | Language model | Generates text tokens one by one, just like a text-only model | Billions to hundreds of billions of parameters |
 
+This NVIDIA figure shows exactly these three parts: vision encoder, projector and LLM (source: [NVIDIA glossary](https://www.nvidia.com/en-us/glossary/vision-language-models/)):
+
+![The common three-part VLM architecture (source: NVIDIA)](https://www.nvidia.com/content/nvidiaGDC/us/en_US/glossary/vision-language-models/_jcr_content/root/responsivegrid/nv_container_copy_co_300503066/nv_image.coreimg.svg/1758650173905/vlm-architecture-diagram.svg)
+
 The data flows like this:
 
 ```text
@@ -643,7 +651,9 @@ text  → tokenizer → embedding ───────────────�
 
 Take [LLaVA-1.5](https://arxiv.org/abs/2310.03744) as an example. The image is resized to 336×336 and cut into 14×14 patches, giving 24×24 = **576 patches**, and each patch ends up as one image vector. In other words, **one image takes 576 tokens of context**, longer than many questions.
 
-Training usually happens in two steps: first freeze the encoder and the language model and train only the projector, so the two sides "line up"; then fine-tune on image and text conversations.
+Training usually happens in two steps: first freeze the encoder and the language model and train only the projector, so the two sides "line up"; then fine-tune on image and text conversations. NVIDIA draws it as three stages: pretraining to align the three parts, supervised fine-tuning (SFT) to learn to answer prompts, and an optional PEFT stage (parameter-efficient fine-tuning, such as LoRA) to adapt the model to your own data (source: [NVIDIA glossary](https://www.nvidia.com/en-us/glossary/vision-language-models/)):
+
+![Staged VLM training (source: NVIDIA)](https://www.nvidia.com/content/nvidiaGDC/us/en_US/glossary/vision-language-models/_jcr_content/root/responsivegrid/nv_container_copy_co_1755415045/nv_image.coreimg.svg/1758650174299/vlm-training-process-diagram.svg)
 
 Another way to connect them is not to insert image vectors into the sequence at all, but to add extra **cross-attention** layers inside the language model so the text can "query" image features. Flamingo and Meta's Llama 3.2 Vision work this way. Among open models today, inserting into the sequence is still the more common approach.
 
@@ -2009,6 +2019,7 @@ The sources below are mainly papers, official project documentation and chip ven
 - Reward design for non-verifiable writing tasks: [Writing-Zero](https://arxiv.org/abs/2506.00103)
 - Vision Transformer: [An Image is Worth 16x16 Words](https://arxiv.org/abs/2010.11929)
 - Image and text alignment and early VLMs: [CLIP](https://arxiv.org/abs/2103.00020), [Flamingo](https://arxiv.org/abs/2204.14198), [LLaVA](https://arxiv.org/abs/2304.08485) and [LLaVA-1.5](https://arxiv.org/abs/2310.03744)
+- VLM use cases, three-part architecture and training-stage figures: [NVIDIA glossary: Vision Language Models](https://www.nvidia.com/en-us/glossary/vision-language-models/)
 - Encoder-free VLM: [Fuyu-8B](https://www.adept.ai/blog/fuyu-8b)
 - Gemma 4: [technical report](https://arxiv.org/abs/2607.02770), [12B developer guide](https://developers.googleblog.com/gemma-4-12b-the-developer-guide/), [Hugging Face introduction](https://huggingface.co/blog/gemma4) and [12B model card](https://huggingface.co/google/gemma-4-12B-it)
 - Thinker-Talker design for speech output: [Qwen2.5-Omni](https://arxiv.org/abs/2503.20215) and [Qwen3.5-Omni](https://arxiv.org/abs/2604.15804)
