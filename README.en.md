@@ -32,11 +32,11 @@ This guide is long, but you **do not need to read it from start to finish**. Fin
 
 | Where you are now | Suggested reading order |
 |---|---|
-| 🌱 **I just want to get something running on my computer** (most people start here!) | [Step 0](#step-0-take-a-look-at-your-computer) → [Part 1](#part-1-run-your-first-model-in-ten-minutes) → [Part 2](#part-2-what-just-happened), and see [Part 5](#part-5-what-to-do-when-something-goes-wrong) if you hit problems |
-| 🧐 **It already runs; I want to know why it is fast or slow and which model to switch to** | [Part 3](#part-3-why-is-it-sometimes-fast-and-sometimes-slow) → [Part 4](#part-4-how-to-choose-a-model) → [Common misconceptions](#common-misconceptions) |
-| 🛒 **I am about to buy or upgrade hardware** | [Step 0](#step-0-take-a-look-at-your-computer) → [Part 3](#part-3-why-is-it-sometimes-fast-and-sometimes-slow) → [Part 6](#part-6-should-you-upgrade-your-hardware), and [Part 13](#part-13-does-running-locally-actually-save-money) if you want to do the math |
-| 🏢 **I need to deploy a shared model for a team or company** | Skim [Part 2](#part-2-what-just-happened) and [Part 3](#part-3-why-is-it-sometimes-fast-and-sometimes-slow) first, then read [Part 7](#part-7-more-deployment-tools) → [Part 8](#part-8-serving-many-users-vllm-and-high-concurrency) → [Part 9](#part-9-multiple-gpus-multiple-machines-and-parallelism) → [Part 10](#part-10-evaluating-and-comparing-models-seriously) |
-| 🔬 **I'm just curious and want to understand how it works** | After the beginner parts, read [Part 11](#part-11-precision-and-quantization) and [Part 12](#part-12-the-math-of-speed-limits-and-speculative-decoding) |
+| 🌱 **I just want to get something running on my computer** (most people start here!) | [Step 0](#step-0-take-a-look-at-your-computer) → [Part 1](#part-1-run-your-first-model-in-ten-minutes) → [Part 2](#part-2-what-just-happened), and see [Part 6](#part-6-what-to-do-when-something-goes-wrong) if you hit problems |
+| 🧐 **It already runs; I want to know why it is fast or slow and which model to switch to** | [Part 3](#part-3-why-is-it-sometimes-fast-and-sometimes-slow) → [Part 4](#part-4-multimodal-letting-models-see-images-and-hear-sound) → [Part 5](#part-5-how-to-choose-a-model) → [Common misconceptions](#common-misconceptions) |
+| 🛒 **I am about to buy or upgrade hardware** | [Step 0](#step-0-take-a-look-at-your-computer) → [Part 3](#part-3-why-is-it-sometimes-fast-and-sometimes-slow) → [Part 7](#part-7-should-you-upgrade-your-hardware), and [Part 14](#part-14-does-running-locally-actually-save-money) if you want to do the math |
+| 🏢 **I need to deploy a shared model for a team or company** | Skim [Part 2](#part-2-what-just-happened) and [Part 3](#part-3-why-is-it-sometimes-fast-and-sometimes-slow) first, then read [Part 8](#part-8-more-deployment-tools) → [Part 9](#part-9-serving-many-users-vllm-and-high-concurrency) → [Part 10](#part-10-multiple-gpus-multiple-machines-and-parallelism) → [Part 11](#part-11-evaluating-and-comparing-models-seriously) |
+| 🔬 **I'm just curious and want to understand how it works** | After the beginner parts, read [Part 12](#part-12-precision-and-quantization) and [Part 13](#part-13-the-math-of-speed-limits-and-speculative-decoding) |
 
 Throughout the guide, three small markers tell you who a section is written for:
 
@@ -54,22 +54,23 @@ Throughout the guide, three small markers tell you who a section is written for:
 - [Part 1: Run your first model in ten minutes](#part-1-run-your-first-model-in-ten-minutes)
 - [Part 2: What just happened?](#part-2-what-just-happened)
 - [Part 3: Why is it sometimes fast and sometimes slow?](#part-3-why-is-it-sometimes-fast-and-sometimes-slow)
-- [Part 4: How to choose a model](#part-4-how-to-choose-a-model)
-- [Part 5: What to do when something goes wrong](#part-5-what-to-do-when-something-goes-wrong)
-- [Part 6: Should you upgrade your hardware?](#part-6-should-you-upgrade-your-hardware)
+- [Part 4: Multimodal: letting models see images and hear sound](#part-4-multimodal-letting-models-see-images-and-hear-sound)
+- [Part 5: How to choose a model](#part-5-how-to-choose-a-model)
+- [Part 6: What to do when something goes wrong](#part-6-what-to-do-when-something-goes-wrong)
+- [Part 7: Should you upgrade your hardware?](#part-7-should-you-upgrade-your-hardware)
 
 **🔧 Advanced section**
 
-- [Part 7: More deployment tools](#part-7-more-deployment-tools)
-- [Part 8: Serving many users: vLLM and high concurrency](#part-8-serving-many-users-vllm-and-high-concurrency)
-- [Part 9: Multiple GPUs, multiple machines and parallelism](#part-9-multiple-gpus-multiple-machines-and-parallelism)
-- [Part 10: Evaluating and comparing models seriously](#part-10-evaluating-and-comparing-models-seriously)
+- [Part 8: More deployment tools](#part-8-more-deployment-tools)
+- [Part 9: Serving many users: vLLM and high concurrency](#part-9-serving-many-users-vllm-and-high-concurrency)
+- [Part 10: Multiple GPUs, multiple machines and parallelism](#part-10-multiple-gpus-multiple-machines-and-parallelism)
+- [Part 11: Evaluating and comparing models seriously](#part-11-evaluating-and-comparing-models-seriously)
 
 **🔬 Deep dives and doing the math**
 
-- [Part 11: Precision and quantization](#part-11-precision-and-quantization)
-- [Part 12: The math of speed limits and speculative decoding](#part-12-the-math-of-speed-limits-and-speculative-decoding)
-- [Part 13: Does running locally actually save money?](#part-13-does-running-locally-actually-save-money)
+- [Part 12: Precision and quantization](#part-12-precision-and-quantization)
+- [Part 13: The math of speed limits and speculative decoding](#part-13-the-math-of-speed-limits-and-speculative-decoding)
+- [Part 14: Does running locally actually save money?](#part-14-does-running-locally-actually-save-money)
 
 **📚 Wrapping up**
 
@@ -158,7 +159,7 @@ These machines have large capacity and medium bandwidth. For example:
 | NVIDIA DGX Spark | 128GB | 273GB/s |
 | AMD Strix Halo (Ryzen AI Max+ 395) | 128GB | 256GB/s |
 
-The capacity is far larger than the RTX 4090's 24GB, and the bandwidth is between dual-channel DDR5 and the RTX 4090. So they can hold large models that a 4090 cannot, and their speed depends on how much data the model must read per token. [Part 6](#part-6-should-you-upgrade-your-hardware) compares them in detail.
+The capacity is far larger than the RTX 4090's 24GB, and the bandwidth is between dual-channel DDR5 and the RTX 4090. So they can hold large models that a 4090 cannot, and their speed depends on how much data the model must read per token. [Part 7](#part-7-should-you-upgrade-your-hardware) compares them in detail.
 
 ### How to check your own hardware
 
@@ -214,7 +215,7 @@ To run a model you need an **inference program** (also called an inference frame
 | [LM Studio](https://lmstudio.ai/) | You want a graphical interface and don't want to touch the command line. **My top recommendation for your first time** |
 | [Ollama](https://ollama.com/) | You are used to the command line, or you want other software to call the model |
 
-Both are free, and both support Windows, macOS and Linux. Under the hood they are built on inference engines like llama.cpp (covered in [Part 7](#part-7-more-deployment-tools)). Let's walk through LM Studio first.
+Both are free, and both support Windows, macOS and Linux. Under the hood they are built on inference engines like llama.cpp (covered in [Part 8](#part-8-more-deployment-tools)). Let's walk through LM Studio first.
 
 ### Running your first model with LM Studio
 
@@ -235,7 +236,7 @@ The interface usually shows a speed such as `45 tok/sec`, meaning 45 tokens gene
 
 - **Over 20** per second: faster than reading speed, very smooth;
 - **5–20**: usable;
-- **Under 5**: usually means part of the model didn't fit in VRAM; see [Part 5](#part-5-what-to-do-when-something-goes-wrong).
+- **Under 5**: usually means part of the model didn't fit in VRAM; see [Part 6](#part-6-what-to-do-when-something-goes-wrong).
 
 You can also compare this number with the estimate in [Step 0](#where-the-data-lives-and-where-the-computing-happens): measured speed usually reaches half to 80% of the "bandwidth ÷ model size" limit. If it is far below that, the GPU is most likely not being fully used.
 
@@ -270,7 +271,7 @@ Lots of software supports an **OpenAI-compatible API**, meaning the request and 
 
 Now that the model runs, the next part explains what the tokens, `Q4_K_M` and Context Length you just saw actually are.
 
-If it didn't run, go straight to [Part 5: What to do when something goes wrong](#part-5-what-to-do-when-something-goes-wrong).
+If it didn't run, go straight to [Part 6: What to do when something goes wrong](#part-6-what-to-do-when-something-goes-wrong).
 
 ---
 
@@ -390,7 +391,7 @@ You will see other formats on download pages too:
 
 - **GGUF**: the model file format defined by llama.cpp, used by both LM Studio and Ollama. The Q4_K_M above is a GGUF quantization level. **For personal local use, just look for GGUF.**
 - **safetensors**: the most common format for original models, usually unquantized and large, mainly used by server programs like vLLM.
-- **GPTQ, AWQ, FP8, NVFP4, MLX and others**: other quantization methods or formats aimed at specific programs or hardware (MLX is for Apple chips only). See [Part 11](#part-11-precision-and-quantization).
+- **GPTQ, AWQ, FP8, NVFP4, MLX and others**: other quantization methods or formats aimed at specific programs or hardware (MLX is for Apple chips only). See [Part 12](#part-12-precision-and-quantization).
 
 ### Next step
 
@@ -412,7 +413,7 @@ You now know how a model generates tokens one at a time, why to choose the Instr
 
 **Compute (FLOPS)**: how many floating-point operations can be done per second. It becomes important when processing long inputs, serving many requests at once, and training. GPU spec sheets usually list the Tensor Core peak at some precision (FP16, FP8, FP4).
 
-**Interconnect bandwidth**: how fast data moves between GPUs and between machines, for example PCIe, NVLink or the network. You don't need to think about it with a single card; with several cards it can become the bottleneck. See [Part 9](#part-9-multiple-gpus-multiple-machines-and-parallelism).
+**Interconnect bandwidth**: how fast data moves between GPUs and between machines, for example PCIe, NVLink or the network. You don't need to think about it with a single card; with several cards it can become the bottleneck. See [Part 10](#part-10-multiple-gpus-multiple-machines-and-parallelism).
 
 ### Estimating single-user generation speed
 
@@ -466,7 +467,7 @@ When do you process many tokens at once? In two cases:
 
 In both cases, compute becomes important.
 
-> 🔬 A more precise calculation (including a full numerical example on the H200) is in [Part 12](#part-12-the-math-of-speed-limits-and-speculative-decoding).
+> 🔬 A more precise calculation (including a full numerical example on the H200) is in [Part 13](#part-13-the-math-of-speed-limits-and-speculative-decoding).
 
 ### Prefill and decode
 
@@ -568,7 +569,7 @@ But MoE is not free of bandwidth limits:
 
 ### One user versus many users
 
-Most of the estimates above are for one user. If a team of dozens or hundreds of people shares one model, things are different: the server combines many requests, and one read of the weights can generate one token for each of dozens of requests at the same time. Following the memory-bound / compute-bound analysis above, the server's total tokens per second will be much higher, but the speed each user gets will drop and queueing time will grow. [Part 8](#part-8-serving-many-users-vllm-and-high-concurrency) covers this in detail.
+Most of the estimates above are for one user. If a team of dozens or hundreds of people shares one model, things are different: the server combines many requests, and one read of the weights can generate one token for each of dozens of requests at the same time. Following the memory-bound / compute-bound analysis above, the server's total tokens per second will be much higher, but the speed each user gets will drop and queueing time will grow. [Part 9](#part-9-serving-many-users-vllm-and-high-concurrency) covers this in detail.
 
 ### Summary
 
@@ -577,11 +578,174 @@ Most of the estimates above are for one user. If a team of dozens or hundreds of
 - Long inputs (prefill) and many users (large batches): **compute** starts to become the limit;
 - MoE: total parameters determine memory use, and active parameters determine roughly how fast it runs for a single user.
 
-The next part uses these methods to choose a model.
+The next part first looks at how models handle images, audio and video, and then we come back and use these methods to choose a model.
 
 ---
 
-## Part 4: How to choose a model
+## Part 4: Multimodal: letting models see images and hear sound
+
+> 🌱 Beginner essential. If you only want to use these models, three things are enough: images and audio also become tokens and take up context; running a vision model locally usually means downloading an extra `mmproj` file; and most open models today can only **output text**. The rest is for you if you want to know how a model actually "sees" a picture.
+
+This whole guide has been about one thing: the model reads a sequence of tokens and predicts the next token, one at a time. So how does it read a photo, a voice recording, or even a video?
+
+### What multimodal means
+
+A **modality** is a kind of information: text, images, audio and video are different modalities. A model that only handles text is unimodal; a model that handles several modalities is a **multimodal model**. The most common kind you'll run locally is a **vision language model (VLM)**: it takes images and text in and produces text.
+
+Most people first met multimodal AI at scale with OpenAI's GPT-4 in March 2023. Its technical report showed it answering questions about images, although image input only reached users that September as GPT-4V. GPT-4o in May 2024 went a step further: one model listening and speaking directly, rather than chaining speech-to-text and text-to-speech.
+
+The research started well before GPT-4, though. OpenAI's [CLIP](https://arxiv.org/abs/2103.00020) taught images and text to match each other in 2021, and DeepMind's [Flamingo](https://arxiv.org/abs/2204.14198) could already chat about images in 2022. On the open side, [LLaVA](https://arxiv.org/abs/2304.08485) in April 2023 made open VLMs take off with a very simple design, and most open VLMs today still follow its approach.
+
+The figure below is NVIDIA's summary of common VLM uses: video summarization, image analysis, multimodal chat and document parsing (source: [NVIDIA glossary: Vision Language Models](https://www.nvidia.com/en-us/glossary/vision-language-models/)):
+
+![Common uses of VLMs (source: NVIDIA)](https://www.nvidia.com/content/nvidiaGDC/us/en_US/glossary/vision-language-models/_jcr_content/root/responsivegrid/nv_container_copy/nv_image.coreimg.png/1758650173219/metropolis-iva-diagram-vlm-glossary-ces25-3576177-r1--1-.png)
+
+### The core idea: turn images into "tokens" too
+
+[Part 2](#how-a-model-generates-text-one-token-at-a-time) explained that the first thing that happens to text inside a model is that each token ID is replaced by a vector (an embedding). The dozens of Transformer layers after that **only understand vectors, not text**.
+
+So the key to multimodality is simple: **if you can turn an image into a sequence of vectors the same length as the text embeddings, you can insert them straight into the text and hand everything to the same language model.** These vectors don't correspond to any token in the vocabulary, so they are often called "soft tokens" or "image tokens".
+
+The input sequence for one image question looks roughly like this:
+
+```text
+<user> [image vector 1] [image vector 2] ... [image vector 576] How many cats are in this picture? <assistant>
+```
+
+The model does exactly what it does with plain text: attention, MLP, and finally predicting the next **text** token. The image is just an extra stretch of input to read during prefill.
+
+### Vision Transformer: cutting an image into small squares
+
+How do you turn an image into vectors? The most common tool is the **Vision Transformer (ViT)**, from the 2020 paper [An Image is Worth 16x16 Words](https://arxiv.org/abs/2010.11929). It works like this:
+
+1. Cut the image into fixed-size squares (**patches**), for example 14×14 or 16×16 pixels each;
+2. Lay out all the pixel values of each patch as one long list of numbers and turn it into a vector with a single matrix multiplication. This is the image equivalent of a text embedding;
+3. Add **position information** so the model knows which row and column each patch came from;
+4. Pass these patch vectors through dozens of Transformer layers. Unlike in a language model, attention here is usually **bidirectional**: every patch can see every other patch in the image, with no need to "only look backwards".
+
+After those layers, each patch's vector no longer just says "this square is this colour". It carries information about the whole image, such as "this is a cat's ear".
+
+### Vision encoder and projector: the three parts of a VLM
+
+The **vision encoder** is the part of the network that turns an image into a sequence of vectors. Almost always it is a ViT, and it is usually trained separately beforehand. Common choices are ViTs like CLIP or Google's SigLIP, trained on huge numbers of image and caption pairs, so their output vectors already line up with the meaning of language.
+
+A typical LLaVA-style VLM has three parts:
+
+| Part | What it does | Typical size |
+|---|---|---|
+| Vision encoder | Cuts the image into patches and computes a vector for each patch with a ViT | A few hundred million parameters |
+| Projector | Converts the encoder's vectors to the language model's embedding length, sometimes also merging neighbouring patches to cut the token count | Tiny, one or two matrix multiplications |
+| Language model | Generates text tokens one by one, just like a text-only model | Billions to hundreds of billions of parameters |
+
+This NVIDIA figure shows exactly these three parts: vision encoder, projector and LLM (source: [NVIDIA glossary](https://www.nvidia.com/en-us/glossary/vision-language-models/)):
+
+![The common three-part VLM architecture (source: NVIDIA)](https://www.nvidia.com/content/nvidiaGDC/us/en_US/glossary/vision-language-models/_jcr_content/root/responsivegrid/nv_container_copy_co_300503066/nv_image.coreimg.svg/1758650173905/vlm-architecture-diagram.svg)
+
+The data flows like this:
+
+```text
+image → cut into patches → vision encoder (ViT, dozens of layers) → projector → image vectors
+                                                                                  ↓
+text  → tokenizer → embedding ──────────────────────────────────────→ joined into one sequence → language model → text
+```
+
+Take [LLaVA-1.5](https://arxiv.org/abs/2310.03744) as an example. The image is resized to 336×336 and cut into 14×14 patches, giving 24×24 = **576 patches**, and each patch ends up as one image vector. In other words, **one image takes 576 tokens of context**, longer than many questions.
+
+Training usually happens in two steps: first freeze the encoder and the language model and train only the projector, so the two sides "line up"; then fine-tune on image and text conversations. NVIDIA draws it as three stages: pretraining to align the three parts, supervised fine-tuning (SFT) to learn to answer prompts, and an optional PEFT stage (parameter-efficient fine-tuning, such as LoRA) to adapt the model to your own data (source: [NVIDIA glossary](https://www.nvidia.com/en-us/glossary/vision-language-models/)):
+
+![Staged VLM training (source: NVIDIA)](https://www.nvidia.com/content/nvidiaGDC/us/en_US/glossary/vision-language-models/_jcr_content/root/responsivegrid/nv_container_copy_co_1755415045/nv_image.coreimg.svg/1758650174299/vlm-training-process-diagram.svg)
+
+Another way to connect them is not to insert image vectors into the sequence at all, but to add extra **cross-attention** layers inside the language model so the text can "query" image features. Flamingo and Meta's Llama 3.2 Vision work this way. Among open models today, inserting into the sequence is still the more common approach.
+
+### Multiple images, video and audio
+
+Once "an image is just a stretch of vectors" clicks, the other inputs follow naturally:
+
+- **Multiple images**: each image becomes its own stretch of vectors, inserted into the conversation in order.
+- **Video**: just as you'd guess, video is basically **several images in time order**. A common approach is to take 1 frame per second and treat each frame as an image, sometimes merging neighbouring frames to save tokens. For video with sound, the matching audio goes in as well.
+- **Audio**: cut the sound into short slices in time (for example 40 milliseconds each), turn each slice into a vector with an **audio encoder**, and insert those into the sequence like an image. Many audio encoders first convert the waveform into a Mel spectrogram (a picture of "how loud each frequency is at each moment") and then process it with convolutions and a Transformer.
+
+The direct consequence: **multimodal input eats a lot of context and prefill compute**. One minute of video at 1 frame per second and 70 tokens per frame is 60 × 70 = **4,200 tokens**; at 280 tokens per frame it's 16,800. These tokens need prefill and take KV cache just like text, so the "slow to read the question" effect from [Part 3](#prefill-and-decode) is even more noticeable with multimodal input.
+
+### What to watch for when running vision models locally
+
+- **llama.cpp, LM Studio and Ollama all support many vision models.** In a Hugging Face GGUF repository, besides the model itself, there is usually a file with `mmproj` in its name. That is the vision encoder plus projector. llama.cpp needs it loaded alongside the model with `--mmproj`; LM Studio and Ollama usually handle it automatically. If you only download the main model file, it will chat normally but won't be able to "see" images.
+- **Different programs support different modalities.** For the same model, one program may support images but not audio or video, so check the program's documentation first.
+- **Image resolution changes the token count.** Many newer models let you choose a token budget per image: give it more for documents or small text in screenshots, less for "what's in this picture?", which is much faster.
+- **The vision encoder takes memory too, and usually shouldn't be quantized too aggressively.** When estimating memory, add the size of the `mmproj` file.
+
+### A new direction: the "unified" design of Gemma 4 12B
+
+In the Gemma 4 family Google released in 2026, different sizes use two different multimodal designs, which makes them a good comparison (the numbers below come from the [Gemma 4 technical report](https://arxiv.org/abs/2607.02770), the [developer guide](https://developers.googleblog.com/gemma-4-12b-the-developer-guide/) and the [Hugging Face introduction](https://huggingface.co/blog/gemma4)):
+
+| Model | Seeing | Hearing |
+|---|---|---|
+| E2B, E4B (on-device small models) | ViT encoder of about 150M parameters (16 layers) | USM-style audio encoder of about 300M parameters (2 convolution layers + 12 Conformer layers) |
+| 26B-A4B (MoE), 31B | ViT encoder of about 550M parameters (27 layers) | No audio input |
+| **12B** | **No vision encoder**, just a lightweight embedding module of about 35M parameters | **No audio encoder**, a direct linear projection |
+
+Google calls the 12B a "unified, encoder-free" model. Here is how it differs from a traditional VLM:
+
+- **Images**: the raw image is cut into 48×48-pixel patches, and each patch's pixel values go through **a single matrix multiplication** that turns them directly into a vector of the language model's embedding length. Position information looked up separately by row and column is added, plus normalization. There are no 27 ViT layers.
+- **Audio**: the raw 16 kHz waveform is cut into 40-millisecond slices of exactly 640 samples each, and each slice also enters the language model through **one linear projection**. No Mel spectrogram, no Conformer.
+- **All the remaining work is done by the language model itself**: text, image and audio vectors enter the same 48-layer decoder-only Transformer, using the same weights. The "what is this patch of pixels" understanding that a ViT used to provide now has to be learned by the language model's own layers.
+
+The two data flows side by side:
+
+```text
+Traditional (Gemma 4 31B): image → 16×16 patches → ViT (27 layers, ~550M params) → projector → language model
+Unified (Gemma 4 12B):     image → 48×48 patches → one matmul + position info ──────────────→ language model
+                           audio → 40ms raw waveform → one linear projection ───────────────→ language model
+```
+
+Why do this? Google's stated reason is that chaining several separate encoders **adds latency and fragments memory use**. Without encoders, deployment is simpler, and fine-tuning updates the whole multimodal path together, so you never get a frozen encoder drifting out of step with a changing language model. The cost is that the model must be pretrained on multimodal data **from scratch** (the technical report says the 12B is "trained from scratch"); you can't just bolt on an off-the-shelf CLIP or SigLIP the way LLaVA does.
+
+The idea isn't entirely new: Adept's [Fuyu-8B](https://www.adept.ai/blog/fuyu-8b) already projected image patches linearly into the language model in 2023. Gemma 4 12B extends the same idea to audio and gets close to the results of a larger model.
+
+For running it locally: the model card says the 12B supports images, audio up to 30 seconds and video up to 60 seconds (at 1 frame per second), with 256K context, and outputs text only. Its design differs from other multimodal models, so check that the program you use already supports this specific model before downloading.
+
+### How a model "speaks": audio output
+
+First, a correction to a common impression: **every Gemma 4 model outputs text only.** Google's [Hugging Face introduction](https://huggingface.co/blog/gemma4) says it "supports image, text, and audio inputs, and generates text responses", and the [12B model card](https://huggingface.co/google/gemma-4-12B-it) lists text as the only output modality. Gemma 4's audio ability is listening (speech recognition and speech translation), not speaking. Google's closed products such as Gemini can speak directly, but Gemma itself has no official speech output.
+
+That said, the ways to make a language model talk are well established, and there are two main ones:
+
+**1. Cascade**: the language model outputs text, and a separate TTS (text-to-speech) model reads it aloud. It's simple, reliable and easy to set up locally. The downsides are higher latency and losing tone and emotion when only text is passed along.
+
+**2. Have the model output "sound tokens" directly**: this needs a **neural audio codec**. Its encoder compresses a stretch of waveform into a small number of discrete codes, and its decoder turns those codes back into a waveform. Kyutai's Mimi codec, for example, runs at 12.5 frames per second with 8 codes per frame. Now sound is also "pick a code from a fixed vocabulary", the same kind of problem as predicting the next text token.
+
+Most open end-to-end speech models today use a **Thinker-Talker** design, represented by Alibaba's [Qwen2.5-Omni](https://arxiv.org/abs/2503.20215) and the later [Qwen3.5-Omni](https://arxiv.org/abs/2604.15804):
+
+```text
+image/audio/video/text → their own encoders → Thinker (large language model) → text tokens
+                                                   │
+                                                   └─ hidden states → Talker (smaller autoregressive model) → audio codec tokens → codec decoder → waveform
+```
+
+- The **Thinker** is an ordinary multimodal language model. It understands the input, decides what to say, and outputs text;
+- The **Talker** reads the Thinker's **hidden states** from inside the model (not just the final text) and generates audio codec tokens one by one. Because it sees the hidden states, tone and rhythm can match the content;
+- The **codec decoder** turns the audio tokens back into a playable waveform, and plays it as it goes (streaming).
+
+A developer ran an [unofficial experiment](https://www.frisson-labs.com/gemma4-e4b-architecture) on Gemma 4 E4B that shows clearly how data flows through each part: audio passes through the audio encoder into vectors and enters the frozen 42-layer decoder; hidden states are taken from roughly the last 6 layers and fed into a self-trained "speech head" of about 150M parameters that predicts Mimi codec codes; finally the frozen Mimi decoder produces a 24 kHz waveform. The author says plainly that this is a proof of the structure trained on 128 samples, not a usable TTS, but the structure is essentially the same as a Talker.
+
+### Possible future changes
+
+Here are a few directions that are happening now but aren't settled yet:
+
+- **Dropping the encoder**: Gemma 4 12B shows an encoder-free design works at a mid-size scale. Whether it becomes mainstream depends on results from larger models and other labs.
+- **Natively multimodal pretraining**: training on mixed text, images and audio from day one, instead of "train a text model first, then attach an encoder".
+- **Any-to-any output**: one model that outputs not only text but also speech or even images directly. Meta's [Chameleon](https://arxiv.org/abs/2405.09818) cuts images into discrete tokens too and uses one model to generate both text and images.
+- **Visual representations that use fewer tokens**: dynamic resolution, selectable token budgets and merging neighbouring frames all aim to make images and video take less context. For local deployment, this directly decides speed and memory.
+
+All of these are moving fast, and specific models may be outdated in a few months. But the main thread, that **every modality ends up as a sequence of vectors the language model can read**, shouldn't change any time soon.
+
+### Next step
+
+Now that you know how a model "sees" and "hears", the next part helps you choose a model that suits you. If you need image or audio input, check that both the model and the program you run it in support that modality.
+
+---
+
+## Part 5: How to choose a model
 
 > 🌱 Beginner essential.
 
@@ -637,7 +801,7 @@ Models are often several GB to tens of GB, so you can try them online before dow
 
 Remember, though: **a high leaderboard score doesn't mean it suits your task best**. Human preferences can be specifically "pandered to"; for example, longer answers with nicer formatting tend to get picked more often. Leaderboards are good for narrowing things down, but in the end you have to try for yourself.
 
-> 🔧 Want to compare models seriously, for example to choose a model for your company or build your own test set? See [Part 10](#part-10-evaluating-and-comparing-models-seriously).
+> 🔧 Want to compare models seriously, for example to choose a model for your company or build your own test set? See [Part 11](#part-11-evaluating-and-comparing-models-seriously).
 
 ### Don't forget to check the license!
 
@@ -651,11 +815,11 @@ The license is on the model page; read the original text for the version you dow
 
 ### Next step
 
-Once you have chosen a model and it runs, see the next part if you run into problems; if everything goes smoothly, you can skip straight to [Part 6](#part-6-should-you-upgrade-your-hardware), or go to [Common misconceptions](#common-misconceptions) to check you haven't fallen into a trap.
+Once you have chosen a model and it runs, see the next part if you run into problems; if everything goes smoothly, you can skip straight to [Part 7](#part-7-should-you-upgrade-your-hardware), or go to [Common misconceptions](#common-misconceptions) to check you haven't fallen into a trap.
 
 ---
 
-## Part 5: What to do when something goes wrong
+## Part 6: What to do when something goes wrong
 
 > 🌱 Beginner essential. Below are the most common kinds of problems and the order to troubleshoot them in.
 
@@ -704,7 +868,7 @@ Some models are simply not very good in some languages. You can write "Always an
 
 ---
 
-## Part 6: Should you upgrade your hardware?
+## Part 7: Should you upgrade your hardware?
 
 > 🌱 Read this when you are about to buy a computer or graphics card. If you just want to use the computer you have, you can skip it for now.
 
@@ -729,7 +893,7 @@ When choosing a card, I suggest looking at things in this order:
 
 1. **VRAM capacity**: can it hold the model you want to run plus its KV cache? This matters most!
 2. **VRAM bandwidth**: determines generation speed for a single user;
-3. **Whether the architecture supports the precision you need**: for example FP8 or FP4; see [Part 11](#which-precisions-do-different-gpu-architectures-support);
+3. **Whether the architecture supports the precision you need**: for example FP8 or FP4; see [Part 12](#which-precisions-do-different-gpu-architectures-support);
 4. **Whether the software supports it**;
 5. **Power draw, cooling, price and warranty**.
 
@@ -779,7 +943,7 @@ These machines are best suited to large MoE models. Some suggestions:
 
 Combining several cheap 16GB cards to get lots of VRAM is cheaper than buying one card with that much VRAM, and I once planned to do exactly that. It can work, but two 32GB cards are not the same as one 64GB card. The model has to be split across the cards, data has to travel between them constantly, and speed won't double with the number of cards. On top of that, with more cards the power supply, motherboard PCIe slots, case space and cooling all become new problems.
 
-How to split and how to choose is covered in great detail in [Part 9](#part-9-multiple-gpus-multiple-machines-and-parallelism). That part is fairly hardcore; read it when you are actually planning to go multi-GPU.
+How to split and how to choose is covered in great detail in [Part 10](#part-10-multiple-gpus-multiple-machines-and-parallelism). That part is fairly hardcore; read it when you are actually planning to go multi-GPU.
 
 ---
 
@@ -791,7 +955,7 @@ How to split and how to choose is covered in great detail in [Part 9](#part-9-mu
 
 ---
 
-## Part 7: More deployment tools
+## Part 8: More deployment tools
 
 > 🔧 Advanced. LM Studio and Ollama already cover most personal use. Come back to this part when you want more control, want to serve several people, or are using special hardware.
 
@@ -835,11 +999,11 @@ Once the log says the server has started, open `http://localhost:8080` in a brow
 
 If you run out of memory, reduce `-c` (context) or `-ngl` (GPU layers) first. If speed is clearly below published results for similar hardware, look at the startup log to confirm that the CUDA, Metal or Vulkan backend actually loaded, and how many layers actually went onto the GPU.
 
-llama.cpp is great for personal use, edge devices, Apple Silicon, AMD APUs and systems without CUDA. If dozens to hundreds of people will use it at once, you should also test vLLM or SGLang, because they have done a great deal of specialized optimization for "many people sending requests at once" (covered in [Part 8](#part-8-serving-many-users-vllm-and-high-concurrency)).
+llama.cpp is great for personal use, edge devices, Apple Silicon, AMD APUs and systems without CUDA. If dozens to hundreds of people will use it at once, you should also test vLLM or SGLang, because they have done a great deal of specialized optimization for "many people sending requests at once" (covered in [Part 9](#part-9-serving-many-users-vllm-and-high-concurrency)).
 
 ### vLLM: a server for many simultaneous users
 
-[vLLM](https://docs.vllm.ai/) is an LLM serving program designed specifically for "many requests coming in at once". It provides continuous batching, PagedAttention, prefix caching, multi-GPU parallelism, quantization and an OpenAI-compatible API. Don't worry if these terms are new; [Part 8](#part-8-serving-many-users-vllm-and-high-concurrency) and [Part 9](#part-9-multiple-gpus-multiple-machines-and-parallelism) explain them one by one.
+[vLLM](https://docs.vllm.ai/) is an LLM serving program designed specifically for "many requests coming in at once". It provides continuous batching, PagedAttention, prefix caching, multi-GPU parallelism, quantization and an OpenAI-compatible API. Don't worry if these terms are new; [Part 9](#part-9-serving-many-users-vllm-and-high-concurrency) and [Part 10](#part-10-multiple-gpus-multiple-machines-and-parallelism) explain them one by one.
 
 **Before you start, you need:**
 
@@ -872,7 +1036,7 @@ curl http://localhost:8000/v1/chat/completions \
   }'
 ```
 
-A good habit when tuning: first measure a baseline with a short context and a single GPU, then **change only one variable at a time** (for example turning on quantization, multi-GPU parallelism, speculative decoding, a longer context or higher concurrency), and record time to first token, output speed, total throughput and VRAM usage. That way, when something goes wrong, you can tell at a glance which change caused it. For configuring multiple GPUs, see [Part 9](#choosing-and-configuring-parallelism-in-vllm).
+A good habit when tuning: first measure a baseline with a short context and a single GPU, then **change only one variable at a time** (for example turning on quantization, multi-GPU parallelism, speculative decoding, a longer context or higher concurrency), and record time to first token, output speed, total throughput and VRAM usage. That way, when something goes wrong, you can tell at a glance which change caused it. For configuring multiple GPUs, see [Part 10](#choosing-and-configuring-parallelism-in-vllm).
 
 ### SGLang, TensorRT-LLM, NIM and OpenVINO
 
@@ -910,7 +1074,7 @@ On Intel hardware, test OpenVINO's official execution path. ONNX Runtime is stil
 
 ---
 
-## Part 8: Serving many users: vLLM and high concurrency
+## Part 9: Serving many users: vLLM and high concurrency
 
 > 🔧 Advanced. Read this when deploying a shared model for a team, a company or a small product. If it's only for yourself, you can skip it.
 
@@ -1098,7 +1262,7 @@ Putting it all together, when deploying an internal model for dozens to hundreds
 - Operating system: Linux;
 - Tooling: vLLM or SGLang; if you use only NVIDIA and a fixed configuration, you can test TensorRT-LLM as well;
 - API: put authentication, rate limiting and observability in front of the OpenAI-compatible endpoint;
-- Parallelism: start with TP/EP across multiple GPUs in one machine before considering multiple machines (these abbreviations are explained in [Part 9](#part-9-multiple-gpus-multiple-machines-and-parallelism));
+- Parallelism: start with TP/EP across multiple GPUs in one machine before considering multiple machines (these abbreviations are explained in [Part 10](#part-10-multiple-gpus-multiple-machines-and-parallelism));
 - Optimizations: continuous batching, PagedAttention, prefix caching, cache-aware routing, chunked prefill;
 - Metrics: total output tokens/s, requests/s, P95 TTFT, P95 ITL, cost per successful task;
 - Load testing: use your real prompt/output length distribution. Results with 128 input / 128 output tokens don't represent long-document input, long reasoning output or mixed-length requests.
@@ -1107,7 +1271,7 @@ If the workload has lots of shared long documents, prefix caching will matter a 
 
 ---
 
-## Part 9: Multiple GPUs, multiple machines and parallelism
+## Part 10: Multiple GPUs, multiple machines and parallelism
 
 > 🔧 Advanced, and one of the most hardcore parts of the whole guide. You only need it when your model doesn't fit on one card, or when you are serving many people.
 
@@ -1326,13 +1490,13 @@ Spec and behavior sources: [vLLM Parallelism and Scaling](https://docs.vllm.ai/e
 
 ---
 
-## Part 10: Evaluating and comparing models seriously
+## Part 11: Evaluating and comparing models seriously
 
-> 🔧 Advanced. Read this when choosing a model for a company, or when you want to compare several models seriously. For personal use, "pick a few questions and try them yourself" from [Part 4](#part-4-how-to-choose-a-model) is already enough.
+> 🔧 Advanced. Read this when choosing a model for a company, or when you want to compare several models seriously. For personal use, "pick a few questions and try them yourself" from [Part 5](#part-5-how-to-choose-a-model) is already enough.
 
 For your own use, trying a few questions you ask often is enough. But if you are choosing a model for a team, or deciding whether to spend money on hardware, you need a more reliable method. This part covers how to think about the various leaderboards and how to build your own test set.
 
-First, recall the filtering order from [Part 4](#step-one-filter-out-what-you-cant-run). For serious evaluation it can be expanded into five steps:
+First, recall the filtering order from [Part 5](#step-one-filter-out-what-you-cant-run). For serious evaluation it can be expanded into five steps:
 
 1. **Capacity**: can the actual weight files, KV cache, workspace and concurrent sequences all fit in usable memory at the same time;
 2. **Runtime**: does the framework support the model architecture, quantization format, attention, MTP and tool calling;
@@ -1420,7 +1584,7 @@ Raising reasoning effort usually increases test-time computation and may raise s
 
 ---
 
-## Part 11: Precision and quantization
+## Part 12: Precision and quantization
 
 > 🔬 Deep dive. As a beginner, all you need is "choose Q4_K_M by default" from [Part 2](#quantization-what-q4_k_m-actually-means). This part is for those who want to know what really separates FP16, BF16, FP8 and FP4, and which generation of GPU to buy.
 
@@ -1548,7 +1712,7 @@ Before downloading a 4-bit model, confirm whether your runtime can load it, whet
 
 ---
 
-## Part 12: The math of speed limits and speculative decoding
+## Part 13: The math of speed limits and speculative decoding
 
 > 🔬 Deep dive. This part explains thoroughly the reasoning behind the "bandwidth ÷ model size" formula from [Part 3](#part-3-why-is-it-sometimes-fast-and-sometimes-slow), and introduces a technique that makes single-user generation faster. Skipping it doesn't affect your ability to use anything.
 
@@ -1629,7 +1793,7 @@ So when testing MTP, fix at least the model and quantization, prompt, output len
 
 ---
 
-## Part 13: Does running locally actually save money?
+## Part 14: Does running locally actually save money?
 
 > 🔧 Advanced. Read this when you are about to spend money on hardware, or need to convince your boss.
 
@@ -1783,7 +1947,7 @@ Not necessarily. 4-bit weights are about 1/4 the size of FP16, but scale factors
 
 ### "The H100 can load NVFP4, so it has native FP4 acceleration"
 
-No. What Hopper supports natively is FP8 Tensor Cores; native FP4 Tensor Cores only start with Blackwell. See [Part 11](#h100-running-nvfp4-weights).
+No. What Hopper supports natively is FP8 Tensor Cores; native FP4 Tensor Cores only start with Blackwell. See [Part 12](#h100-running-nvfp4-weights).
 
 ### "The MoE only activates 3B, so it only needs a 3B model's memory"
 
@@ -1791,7 +1955,7 @@ No. Memory still has to hold all the experts and shared layers; active parameter
 
 ### "Four GPUs are one big GPU, with capacity and speed simply adding up"
 
-Capacity can be used by splitting the model up, but different splits have different synchronization and communication overhead between cards, and speed won't automatically multiply by the number of cards. See [Part 9](#part-9-multiple-gpus-multiple-machines-and-parallelism).
+Capacity can be used by splitting the model up, but different splits have different synchronization and communication overhead between cards, and speed won't automatically multiply by the number of cards. See [Part 10](#part-10-multiple-gpus-multiple-machines-and-parallelism).
 
 ### "The model supports 1M context, so I'll just set it to 1M"
 
@@ -1799,11 +1963,15 @@ Don't. A large context limit takes up a lot of KV cache and reduces the number o
 
 ### "A model that's cheaper per million tokens always saves money"
 
-Not necessarily. The length of the thinking (reasoning) process, the tokenizer, the cache hit rate, the number of retries and the task success rate all change the real cost of completing a task. See [Part 10](#reasoning-rlvr-and-real-cost).
+Not necessarily. The length of the thinking (reasoning) process, the tokenizer, the cache hit rate, the number of retries and the task success rate all change the real cost of completing a task. See [Part 11](#reasoning-rlvr-and-real-cost).
 
 ### "With prefix caching on, the whole answer doesn't need computing"
 
 No. Prefix caching only skips the "reading the question" computation for the identical beginning; the newly generated answer still has to be computed one token at a time.
+
+### "Images don't use context, so a few extra won't matter"
+
+They do. Every image becomes tens to over a thousand tokens, which take context and need prefill just like text; one minute of video can be thousands of tokens. See [Part 4](#multiple-images-video-and-audio).
 
 ### "The top model on the leaderboard is the best one for me"
 
@@ -1849,6 +2017,14 @@ The sources below are mainly papers, official project documentation and chip ven
 - Reasoning and test-time compute: [OpenAI o1 write-up](https://openai.com/index/learning-to-reason-with-llms/)
 - RL reasoning: [DeepSeek-R1 paper](https://arxiv.org/abs/2501.12948)
 - Reward design for non-verifiable writing tasks: [Writing-Zero](https://arxiv.org/abs/2506.00103)
+- Vision Transformer: [An Image is Worth 16x16 Words](https://arxiv.org/abs/2010.11929)
+- Image and text alignment and early VLMs: [CLIP](https://arxiv.org/abs/2103.00020), [Flamingo](https://arxiv.org/abs/2204.14198), [LLaVA](https://arxiv.org/abs/2304.08485) and [LLaVA-1.5](https://arxiv.org/abs/2310.03744)
+- VLM use cases, three-part architecture and training-stage figures: [NVIDIA glossary: Vision Language Models](https://www.nvidia.com/en-us/glossary/vision-language-models/)
+- Encoder-free VLM: [Fuyu-8B](https://www.adept.ai/blog/fuyu-8b)
+- Gemma 4: [technical report](https://arxiv.org/abs/2607.02770), [12B developer guide](https://developers.googleblog.com/gemma-4-12b-the-developer-guide/), [Hugging Face introduction](https://huggingface.co/blog/gemma4) and [12B model card](https://huggingface.co/google/gemma-4-12B-it)
+- Thinker-Talker design for speech output: [Qwen2.5-Omni](https://arxiv.org/abs/2503.20215) and [Qwen3.5-Omni](https://arxiv.org/abs/2604.15804)
+- Unofficial experiment adding a speech head to Gemma 4 E4B: [Frisson Labs](https://www.frisson-labs.com/gemma4-e4b-architecture)
+- Unified text and image generation: [Chameleon](https://arxiv.org/abs/2405.09818)
 - llama.cpp: [GitHub](https://github.com/ggml-org/llama.cpp)
 - vLLM: [documentation](https://docs.vllm.ai/)
 - SGLang: [GitHub](https://github.com/sgl-project/sglang)
